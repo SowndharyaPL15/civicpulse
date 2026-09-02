@@ -1,6 +1,5 @@
 # 🏙️ CivicPulse — AI-Powered Civic Complaint Management Platform
 
-[![GitHub repository](https://img.shields.io/badge/GitHub-VivekhaShreeK%2FCivicPulse-blue?logo=github)](https://github.com/VivekhaShreeK/CivicPulse)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4?logo=php)](https://www.php.net/)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python)](https://www.python.org/)
 [![MySQL](https://img.shields.io/badge/MySQL-5.7%2B-4479A1?logo=mysql)](https://www.mysql.com/)
