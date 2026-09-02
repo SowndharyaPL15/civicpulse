@@ -112,8 +112,8 @@ CivicPulse/
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/VivekhaShreeK/CivicPulse.git
-cd CivicPulse
+git clone https://github.com/SowndharyaPL15/civicpulse.git
+cd civicpulse
 ```
 
 ---
