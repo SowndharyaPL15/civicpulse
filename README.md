@@ -278,7 +278,3 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ---
 
-## ✉️ Contact & Support
-
-Developed with ❤️ by [VivekhaShreeK](https://github.com/VivekhaShreeK).  
-Repository Link: [https://github.com/VivekhaShreeK/CivicPulse](https://github.com/VivekhaShreeK/CivicPulse)
