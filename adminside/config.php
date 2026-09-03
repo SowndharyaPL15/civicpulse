@@ -1,5 +1,6 @@
 <?php
-$conn=mysqli_connect("localhost","root","","otp_verification",3307);
-if(!$conn){
-    echo "Connection Failed ".mysqli_connect_error() or die();
-}
+/**
+ * CivicPulse — Database Configuration (Admin Side)
+ * Includes universal database connector
+ */
+require_once __DIR__ . '/../database/db_connect.php';

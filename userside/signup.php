@@ -1,6 +1,6 @@
 <?php
 session_start();
-include "config.php"; // your DB connection
+include "config.php";
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -10,62 +10,88 @@ require 'PHPMailer/src/SMTP.php';
 require 'PHPMailer/src/Exception.php';
 
 if(isset($_POST['register'])){
-    $name = mysqli_real_escape_string($conn, $_POST['name']);
-    $email = mysqli_real_escape_string($conn, $_POST['email']);
-    $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+    $name = trim($_POST['name']);
+    $email = trim($_POST['email']);
+    $raw_password = $_POST['password'];
 
-    // Generate OTP & activation code
-    $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT); // 6-digit OTP
-    $activation_code = substr(str_shuffle("abcdefghijklmnopqrstuvwxyz0123456789"), 0, 12);
-
-    // Check if email exists
-    $check = mysqli_query($conn, "SELECT * FROM user WHERE email='$email'");
-    if(mysqli_num_rows($check) > 0){
-        $row = mysqli_fetch_assoc($check);
-        if($row['status'] == 'active'){
-            echo "<script>alert('Email already registered');
-            window.location.href='login.php';</script>";
-            
-            exit;
-
-        } else {
-            mysqli_query($conn, "UPDATE user SET name='$name', password='$password', otp='$otp', activation_code='$activation_code', status='inactive' WHERE email='$email'");
-        }
+    /* Validation */
+    if(empty($name) || empty($email) || empty($raw_password)){
+        $error = "All fields are required.";
+    } elseif(strlen($raw_password) < 6){
+        $error = "Password must be at least 6 characters.";
+    } elseif(!filter_var($email, FILTER_VALIDATE_EMAIL)){
+        $error = "Invalid email address.";
     } else {
-        mysqli_query($conn, "INSERT INTO user (name,email,password,otp,activation_code,status) VALUES ('$name','$email','$password','$otp','$activation_code','inactive')");
-        
-    }
 
-    // Send OTP email
-    $mail = new PHPMailer(true);
-    try {
-        $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = 'justforfunleomeenu@gmail.com'; // your Gmail
-        $mail->Password   = 'jwkvyxtjqyaiaovm';    // Gmail app password
-        $mail->SMTPSecure = 'tls';
-        $mail->Port       = 587;
+        $password = password_hash($raw_password, PASSWORD_DEFAULT);
 
-        $mail->setFrom('justforfunleomeenu@gmail.com', 'CivicPulse');
-        $mail->addAddress($email, $name);
+        // Generate OTP & activation code
+        $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+        $activation_code = substr(str_shuffle("abcdefghijklmnopqrstuvwxyz0123456789"), 0, 12);
 
-        $mail->isHTML(true);
-        $mail->Subject = 'Your OTP Verification Code';
-        $mail->Body    = "Hi $name,<br>Your OTP code is <b>$otp</b>.<br>Activation Code: $activation_code";
+        // Check if email exists using prepared statement
+        $stmt = $conn->prepare("SELECT uid, status FROM user WHERE email=?");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $check = $stmt->get_result();
 
-        $mail->send();
+        if($check->num_rows > 0){
+            $row = $check->fetch_assoc();
+            if($row['status'] == 'active'){
+                $error = "Email already registered. Please login.";
+            } else {
+                $stmt = $conn->prepare("UPDATE user SET name=?, password=?, otp=?, activation_code=?, status='inactive' WHERE email=?");
+                $stmt->bind_param("sssss", $name, $password, $otp, $activation_code, $email);
+                $stmt->execute();
+            }
+        } else {
+            $stmt = $conn->prepare("INSERT INTO user (name,email,password,otp,activation_code,status) VALUES (?,?,?,?,?,'inactive')");
+            $stmt->bind_param("sssss", $name, $email, $password, $otp, $activation_code);
+            $stmt->execute();
+        }
 
-        // Store email in session for OTP verification
-        $_SESSION['email'] = $email;
+        if(!isset($error)){
+            // Send OTP email
+            $mail = new PHPMailer(true);
+            try {
+                $mail->isSMTP();
+                $mail->Host       = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+                $mail->SMTPAuth   = true;
+                $mail->Username   = getenv('SMTP_USER') ?: '';
+                $mail->Password   = getenv('SMTP_PASS') ?: '';
+                $mail->SMTPSecure = getenv('SMTP_SECURE') ?: 'tls';
+                $mail->Port       = getenv('SMTP_PORT') ?: 587;
 
-        // Temporary debug: show OTP
-        // echo "OTP sent: $otp"; exit;
+                $smtp_from = getenv('SMTP_USER') ?: '';
+                $smtp_name = getenv('SMTP_FROM_NAME') ?: 'CivicPulse';
+                $mail->setFrom($smtp_from, $smtp_name);
+                $mail->addAddress($email, $name);
 
-        header("Location: verify_otp.php");
-        exit;
-    } catch (Exception $e) {
-        echo "<script>alert('OTP could not be sent. Mailer Error: {$mail->ErrorInfo}');</script>";
+                $mail->isHTML(true);
+                $mail->Subject = 'Your CivicPulse OTP Verification Code';
+                $mail->Body    = "
+                <div style='font-family:Arial;max-width:500px;margin:auto;padding:30px;border:1px solid #e5e7eb;border-radius:12px;'>
+                <h2 style='color:#2563eb;'>CivicPulse</h2>
+                <p>Hi <strong>$name</strong>,</p>
+                <p>Your OTP verification code is:</p>
+                <div style='font-size:32px;font-weight:bold;color:#2563eb;letter-spacing:8px;padding:15px;background:#f1f5f9;border-radius:8px;text-align:center;'>$otp</div>
+                <p style='margin-top:15px;color:#6b7280;'>This code will be used to verify your account.</p>
+                <p style='color:#9ca3af;font-size:12px;'>If you didn't request this, please ignore this email.</p>
+                </div>";
+
+                $mail->send();
+
+                $_SESSION['email'] = $email;
+                header("Location: verify_otp.php");
+                exit;
+            } catch (Exception $e) {
+                // Fallback for Dev Mode (if SMTP is blocked or offline)
+                $_SESSION['email'] = $email;
+                $_SESSION['dev_otp'] = $otp;
+                header("Location: verify_otp.php");
+                exit;
+            }
+        }
     }
 }
 ?>
@@ -74,18 +100,24 @@ if(isset($_POST['register'])){
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>CivicPulse Registration</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Register — CivicPulse</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="container">
     <div class="form-box">
         <h2>Sign Up</h2>
+
+        <?php if(isset($error)): ?>
+        <div class="error"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+
         <form method="POST" id="signupForm">
-            <input type="text" name="name" placeholder="Name" required>
-            <input type="email" name="email" placeholder="Email" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit" name="register">Register</button>
+            <input type="text" name="name" placeholder="Full Name" required value="<?= htmlspecialchars($_POST['name'] ?? '') ?>">
+            <input type="email" name="email" placeholder="Email Address" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
+            <input type="password" name="password" placeholder="Password (min 6 chars)" required minlength="6">
+            <button type="submit" name="register">Create Account</button>
         </form>
         <p>
             Already registered? <a href="login.php">Login here</a>

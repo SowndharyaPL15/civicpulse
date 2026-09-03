@@ -38,14 +38,16 @@ $mail = new PHPMailer(true);
 try{
 
 $mail->isSMTP();
-$mail->Host='smtp.gmail.com';
-$mail->SMTPAuth=true;
-$mail->Username='justforfunleomeenu@gmail.com';
-$mail->Password='jwkvyxtjqyaiaovm';
-$mail->SMTPSecure='tls';
-$mail->Port=587;
+$mail->Host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+$mail->SMTPAuth = true;
+$mail->Username = getenv('SMTP_USER') ?: '';
+$mail->Password = getenv('SMTP_PASS') ?: '';
+$mail->SMTPSecure = getenv('SMTP_SECURE') ?: 'tls';
+$mail->Port = getenv('SMTP_PORT') ?: 587;
 
-$mail->setFrom('justforfunleomeenu@gmail.com','CivicPulse Admin');
+$smtp_from = getenv('SMTP_USER') ?: '';
+$smtp_name = getenv('SMTP_FROM_NAME') ?: 'CivicPulse Admin';
+$mail->setFrom($smtp_from, $smtp_name);
 $mail->addAddress($admin['email']);
 
 $mail->isHTML(true);
@@ -55,13 +57,14 @@ $mail->Body="Your OTP is: <b>$otp</b>. It expires in 15 minutes.";
 $mail->send();
 
 }catch(Exception $e){
-die("OTP could not be sent. Mailer Error: {$mail->ErrorInfo}");
+$error = "OTP could not be sent. Please check SMTP configuration.";
 }
 
-$_SESSION['otp_admin_id']=$admin['admin_id'];
-
-header("Location: admin_otp.php");
-exit;
+if(!isset($error)){
+    $_SESSION['otp_admin_id']=$admin['admin_id'];
+    header("Location: admin_otp.php");
+    exit;
+}
 
 }
 
@@ -101,30 +104,33 @@ $error="Invalid email or password!";
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
 
 body{
 height:100vh;
-background:linear-gradient(135deg,#2c3e50,#4ca1af);
+background:linear-gradient(135deg,#0f172a,#1e3a5f);
 display:flex;
 align-items:center;
 justify-content:center;
-font-family:Segoe UI;
+font-family:'Inter',sans-serif;
+margin:0;
 }
 
 .login-container{
 width:900px;
+max-width:95vw;
 background:white;
-border-radius:12px;
+border-radius:16px;
 overflow:hidden;
-box-shadow:0 20px 40px rgba(0,0,0,0.2);
+box-shadow:0 25px 50px rgba(0,0,0,0.25);
 }
 
 .left-panel{
-background:#2c3e50;
+background:linear-gradient(135deg,#0f172a,#1e3a5f);
 color:white;
-padding:60px;
+padding:60px 40px;
 display:flex;
 flex-direction:column;
 justify-content:center;
@@ -135,26 +141,52 @@ font-weight:700;
 }
 
 .right-panel{
-padding:60px;
+padding:60px 40px;
 }
 
 .form-control{
 padding:12px;
+border-radius:10px;
+border:1px solid #e5e7eb;
+transition:0.2s;
+}
+
+.form-control:focus{
+border-color:#2563eb;
+box-shadow:0 0 0 3px rgba(37,99,235,0.1);
 }
 
 .login-btn{
 padding:12px;
 font-weight:600;
+border-radius:10px;
+background:#2563eb;
+border:none;
+transition:0.2s;
+}
+
+.login-btn:hover{
+background:#1e40af;
+transform:translateY(-1px);
 }
 
 .brand{
 font-size:28px;
 font-weight:bold;
 margin-bottom:10px;
+background:linear-gradient(90deg,#60a5fa,#34d399);
+-webkit-background-clip:text;
+-webkit-text-fill-color:transparent;
 }
 
 .subtitle{
-opacity:0.8;
+opacity:0.85;
+line-height:1.6;
+}
+
+@media(max-width:768px){
+.left-panel{display:none;}
+.right-panel{padding:40px 25px;}
 }
 
 </style>
@@ -189,12 +221,12 @@ Manage civic complaints, assign workers, and monitor infrastructure issues effic
 
 <div class="mb-3">
 <label class="form-label">Email</label>
-<input type="email" name="email" class="form-control" required>
+<input type="email" name="email" class="form-control" placeholder="admin@example.com" required>
 </div>
 
 <div class="mb-3">
 <label class="form-label">Password</label>
-<input type="password" name="password" class="form-control" required>
+<input type="password" name="password" class="form-control" placeholder="Enter password" required>
 </div>
 
 <button type="submit" name="login" class="btn btn-primary w-100 login-btn">
@@ -205,7 +237,7 @@ Login
 
 <?php
 if(isset($error)){
-echo "<div class='alert alert-danger mt-3'>$error</div>";
+echo "<div class='alert alert-danger mt-3'>" . htmlspecialchars($error) . "</div>";
 }
 ?>
 

@@ -1,280 +1,290 @@
-# 🏙️ CivicPulse — AI-Powered Civic Complaint Management Platform
+# 🏙 CivicPulse
 
-[![PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4?logo=php)](https://www.php.net/)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python)](https://www.python.org/)
-[![MySQL](https://img.shields.io/badge/MySQL-5.7%2B-4479A1?logo=mysql)](https://www.mysql.com/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+**A Smart Civic Complaint Management System**
 
-**CivicPulse** is an intelligent, full-stack civic complaint resolution system designed to connect citizens directly with local government municipal departments. It leverages **Natural Language Processing (NLP) sentence transformers** to automatically group duplicate complaints into unified master issues, dynamically calculate priority based on complaint density, and use **Haversine geospatial calculations** to assign nearest available field workers for rapid issue resolution.
+CivicPulse enables citizens to report real-world community problems — such as potholes, garbage accumulation, broken streetlights, water issues, and other public infrastructure issues — with GPS tagging, image evidence, and real-time tracking. Authorities can manage, assign, and resolve issues through an admin dashboard with analytics.
 
 ---
 
-## 🌟 Key Features
+## 📋 Problem Statement
 
-### 👤 Citizen Portal (`/userside`)
-- **Secure Authentication & OTP**: Account creation, secure login, and email OTP verification integrated via **PHPMailer**.
-- **Interactive Issue Submission**: Submit complaints with category selection, detailed descriptions, photo attachments, and precise interactive map pin locations powered by **Leaflet.js**.
-- **Real-Time Complaint Tracking**: Track the life cycle of submitted complaints (`Open` ➔ `In Progress` ➔ `Resolved`).
-- **User Profile Management**: Update personal info, credentials, and password securely.
+Urban civic infrastructure issues often go unreported or unresolved due to lack of a centralized, transparent complaint management system. Citizens have no easy way to report problems with evidence, and authorities struggle to prioritize and track resolution.
 
-### 🧠 AI & ML Processing Engine (`process_complaints.py`)
-- **NLP Duplicate Grouping**: Pre-trained Hugging Face Transformer model (`all-MiniLM-L6-v2`) computes semantic text embeddings for complaint descriptions.
-- **Cosine Similarity Clustering**: Automatically clusters semantically similar complaints submitted across different users within the same department and issue type (similarity threshold $\ge$ 0.35).
-- **Dynamic Priority Scoring**: Automatically recalculates and escalates issue priority (`LOW`, `MEDIUM`, `HIGH`) based on duplicate complaint volume.
-- **Geospatial Master Mapping**: Groups related individual complaints under central master "Issues" for streamlined administrative action.
-
-### 🛡️ Administrative Portal (`/adminside`)
-- **Role-Based Dashboards**: Tailored views for Central Admin and Departmental Admins (Roads, Drainage, Streetlights, Sanitation, etc.).
-- **Smart Worker Assignment**: Algorithmic nearest-worker allocation using the **Haversine formula** to measure real-time distance between field workers and issue coordinates.
-- **Field Worker Management**: Maintain worker rosters, contact details, department assignments, and live status toggles (`Available` / `Busy`).
-- **Issue Lifecycle & Resolution**: View grouped complaint details, assign tasks, update status, and attach proof of work upon resolution.
-- **Analytics & Reporting**: Visual data metrics on resolved vs pending issues per department.
+CivicPulse bridges this gap by providing:
+- A citizen-friendly interface for reporting issues with location and evidence
+- AI-powered grouping of similar complaints
+- Smart worker assignment based on proximity
+- Real-time status tracking for transparency
+- Analytics dashboard for administrative decision-making
 
 ---
 
-## 🏗️ System Architecture
+## ✨ Features
 
-```mermaid
-graph TD
-    A[Citizen / User] -->|1. Submit Complaint with Photo & GPS| B[Userside Web App - PHP]
-    B -->|2. Store Raw Complaints| C[(MySQL Database: otp_verification)]
-    
-    D[Python AI Engine: process_complaints.py] -->|3. Fetch Ungrouped Complaints| C
-    D -->|4. Generate Embeddings & Cosine Similarity| E{Similarity >= 0.35?}
-    E -->|Yes| F[Group into Existing Master Issue & Escalate Priority]
-    E -->|No| G[Create New Master Issue]
-    F --> C
-    G --> C
+### Citizen Module
+- **Registration & Login** — OTP-based email verification
+- **Dashboard** — View complaint stats (total, open, in-progress, resolved)
+- **Submit Complaint** — Select department, issue type, describe problem, upload evidence, pin location on map
+- **Track Complaints** — Visual progress tracker (Submitted → Assigned → In Progress → Resolved)
+- **Issue Confirmation** — "I also face this" button on map for community validation
+- **Profile Management** — Edit profile, change password
+- **Complaint Map** — Interactive map with marker clusters showing all complaints
 
-    H[Department Admin] -->|5. View Issues & Run Smart Assign| I[Adminside Web App - PHP]
-    I -->|6. Calculate Haversine Distance| J[Assign Nearest Available Worker]
-    J --> C
-    
-    K[Field Worker] -->|7. Resolve Issue & Update Status| I
+### Admin Module
+- **Secure Login** — OTP verification, temporary password support
+- **Department Dashboard** — View issues filtered by department with stats
+- **Search & Filter** — Search by title/ID, filter by status
+- **View Issue Details** — Full details, evidence images, assignment history, map
+- **Assign Worker** — Manual selection or auto-assign nearest available worker
+- **Update Status** — Change issue status with resolution notes, status history
+- **Worker Management** — Add/remove workers, track availability, GPS location
+- **Reports & Analytics** — Priority distribution (doughnut chart), issue trends (line chart), complaint heatmap, top issue clusters
+- **Central Admin** — Cross-department overview with department assignment
+
+### AI & Smart Features
+- **AI Complaint Grouping** — Uses sentence-transformers (all-MiniLM-L6-v2) to cluster similar complaints
+- **Automatic Priority** — Priority calculated based on complaint count
+- **Smart Worker Assignment** — Haversine distance-based nearest worker assignment
+- **Location Centroid** — Issue location recalculated as centroid of all related complaints
+
+---
+
+## 👥 User Roles
+
+| Role | Access |
+|------|--------|
+| **Citizen** | Register, submit complaints, track status, confirm issues |
+| **Department Admin** | Manage department issues, assign workers, update status, view reports |
+| **Central Admin** | View all issues, assign departments |
+
+---
+
+## 🔄 System Workflow
+
+```
+Citizen submits complaint
+        ↓
+Complaint stored with GPS + image evidence
+        ↓
+AI groups similar complaints into issues
+        ↓
+Priority auto-calculated (LOW/MEDIUM/HIGH)
+        ↓
+Department admin reviews issue
+        ↓
+Worker assigned (manual or auto-nearest)
+        ↓
+Status updated (Open → In Progress → Resolved)
+        ↓
+Citizen tracks progress in real-time
 ```
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠 Technology Stack
 
-- **Frontend**: HTML5, CSS3, JavaScript (ES6+), Leaflet.js (OpenStreetMap API), Google Fonts (Inter, Segoe UI)
-- **Backend**: PHP 7.4+, Python 3.8+
-- **Database**: MySQL / MariaDB (`mysqli` & `mysql-connector-python`)
-- **Machine Learning**: `sentence-transformers` (`all-MiniLM-L6-v2`), `scikit-learn`, `numpy`
-- **Email Service**: PHPMailer (SMTP integration for OTP verification & notifications)
-- **Web Server**: Apache / XAMPP / WAMP / Nginx
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | HTML, CSS, JavaScript, Bootstrap 5 |
+| **Backend** | PHP 8+ |
+| **Database** | MySQL (via XAMPP) |
+| **Maps** | Leaflet.js + OpenStreetMap (no API key needed) |
+| **Charts** | Chart.js |
+| **Email** | PHPMailer (Gmail SMTP) |
+| **AI Grouping** | Python, sentence-transformers, scikit-learn |
+| **Geocoding** | Nominatim (OpenStreetMap) |
+| **Icons** | Bootstrap Icons |
+| **Fonts** | Inter (Google Fonts) |
 
 ---
 
-## 📁 Repository Structure
+## 📁 Project Structure
 
-```text
+```
 CivicPulse/
-├── index.php                 # Public Landing / About page & auth modal
-├── process_complaints.py     # AI background service for semantic clustering & priority scoring
 │
-├── userside/                 # Citizen portal
-│   ├── complaint.php         # Issue reporting form with Leaflet map & image upload
-│   ├── track.php             # Real-time status tracking dashboard
-│   ├── login.php             # Citizen login
-│   ├── signup.php            # Registration page
-│   ├── verify_otp.php        # OTP email verification
-│   ├── profile.php           # User profile management
-│   ├── homestyle.css         # Styling for user portal
-│   └── PHPMailer/            # SMTP email module
+├── adminside/                  # Admin module
+│   ├── PHPMailer/              # PHPMailer library
+│   ├── config.php              # Database configuration
+│   ├── adminlogin.php          # Admin login page
+│   ├── admin_otp.php           # Admin OTP verification
+│   ├── change_pass.php         # Admin password change
+│   ├── dashboard.php           # Department dashboard
+│   ├── view_issue.php          # Issue details + evidence
+│   ├── assign_work.php         # Manual worker assignment
+│   ├── smart_assign.php        # Auto nearest worker assignment
+│   ├── update_status.php       # Status update + history
+│   ├── workers.php             # Worker management (CRUD)
+│   ├── reports.php             # Analytics & reports
+│   ├── central_admin_dashboard.php  # Cross-department view
+│   ├── assign_department.php   # Department assignment handler
+│   ├── logout.php              # Admin logout
+│   └── adminstyle.css          # Admin stylesheet
 │
-├── adminside/                # Admin & Departmental portal
-│   ├── dashboard.php         # Department admin dashboard
-│   ├── central_admin_dashboard.php # Master administrative overview
-│   ├── smart_assign.php      # Haversine nearest worker assignment algorithm
-│   ├── assign_work.php       # Manual worker assignment
-│   ├── update_status.php     # Issue lifecycle update tool
-│   ├── workers.php           # Field worker roster management
-│   ├── view_issue.php        # Detailed master issue view
-│   ├── reports.php          # Analytical reports and metrics
-│   ├── adminlogin.php        # Administrative login
-│   └── PHPMailer/            # SMTP email module
+├── userside/                   # Citizen module
+│   ├── PHPMailer/              # PHPMailer library
+│   ├── images/                 # Static images
+│   ├── config.php              # Database configuration
+│   ├── login.php               # Citizen login
+│   ├── signup.php              # Citizen registration
+│   ├── verify_otp.php          # OTP verification
+│   ├── resend_otp.php          # Resend OTP
+│   ├── home.php                # Citizen dashboard
+│   ├── complaint.php           # Submit complaint form
+│   ├── track.php               # Track complaints
+│   ├── confirm_issue.php       # "I also face this" API
+│   ├── profile.php             # User profile
+│   ├── edit_profile.php        # Edit profile
+│   ├── change_password.php     # Change password
+│   ├── about.php               # About/landing page
+│   ├── logout.php              # User logout
+│   └── styles.css              # Auth pages stylesheet
 │
-└── uploads/                  # Upload directory for complaint & proof images
+├── database/
+│   └── civicpulse.sql          # Complete database schema
+│
+├── uploads/                    # Uploaded complaint images
+│
+├── process_complaints.py       # AI complaint grouping script
+├── .env                        # Environment variables (not in git)
+├── .env.example                # Environment template
+├── .gitignore                  # Git ignore rules
+└── README.md                   # This file
 ```
 
 ---
 
-## ⚡ Setup & Installation Guide
+## 🚀 Installation & Setup
 
 ### Prerequisites
-- [XAMPP](https://www.apachefriends.org/) / WAMP / LAMP (PHP 7.4+ & MySQL 5.7+)
-- Python 3.8+ & `pip`
-- Git
+- **XAMPP** (Apache + MySQL + PHP 8+)
+- **Python 3.8+** (for AI grouping feature)
+- **pip** (Python package manager)
+- **Gmail account** with App Password enabled (for SMTP)
 
----
-
-### Step 1: Clone the Repository
+### Step 1: Clone / Place Project
 ```bash
-git clone https://github.com/SowndharyaPL15/civicpulse.git
-cd civicpulse
+# Place the CivicPulse folder in your XAMPP htdocs directory
+# e.g., C:\xampp\htdocs\Civicpulse
 ```
-
----
 
 ### Step 2: Database Setup
-1. Start **Apache** and **MySQL** in XAMPP / WAMP.
-2. Open phpMyAdmin (`http://localhost/phpmyadmin`).
-3. Create a new database named **`otp_verification`**.
-4. Import the database schema or run the following SQL script:
-
-```sql
-CREATE DATABASE IF NOT EXISTS otp_verification;
-USE otp_verification;
-
--- Users table
-CREATE TABLE IF NOT EXISTS users (
-    user_id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    otp VARCHAR(6) DEFAULT NULL,
-    is_verified TINYINT(1) DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Admin table
-CREATE TABLE IF NOT EXISTS admin (
-    admin_id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    dept_id INT DEFAULT NULL,
-    role ENUM('Central', 'Department') DEFAULT 'Department'
-);
-
--- Departments table
-CREATE TABLE IF NOT EXISTS departments (
-    dept_id INT AUTO_INCREMENT PRIMARY KEY,
-    dept_name VARCHAR(100) NOT NULL
-);
-
--- Issue types table
-CREATE TABLE IF NOT EXISTS issue_types (
-    type_id INT AUTO_INCREMENT PRIMARY KEY,
-    issue_name VARCHAR(100) NOT NULL,
-    dept_id INT NOT NULL,
-    FOREIGN KEY (dept_id) REFERENCES departments(dept_id) ON DELETE CASCADE
-);
-
--- Master Issues table (Clustered by AI)
-CREATE TABLE IF NOT EXISTS issues (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    issue_title VARCHAR(255) NOT NULL,
-    department_id INT NOT NULL,
-    issue_type_id INT NOT NULL,
-    complaint_count INT DEFAULT 1,
-    priority ENUM('LOW', 'MEDIUM', 'HIGH') DEFAULT 'LOW',
-    latitude DECIMAL(10, 8),
-    longitude DECIMAL(11, 8),
-    status ENUM('Open', 'In Progress', 'Resolved') DEFAULT 'Open',
-    assigned_worker_id INT DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Individual Complaints table
-CREATE TABLE IF NOT EXISTS complaints (
-    cid INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    department_id INT NOT NULL,
-    issue_type_id INT NOT NULL,
-    description TEXT NOT NULL,
-    image VARCHAR(255) DEFAULT NULL,
-    latitude DECIMAL(10, 8),
-    longitude DECIMAL(11, 8),
-    issue_id INT DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE SET NULL
-);
-
--- Workers table
-CREATE TABLE IF NOT EXISTS workers (
-    worker_id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    phone VARCHAR(20) NOT NULL,
-    department_id INT NOT NULL,
-    status ENUM('Available', 'Busy') DEFAULT 'Available',
-    latitude DECIMAL(10, 8) DEFAULT NULL,
-    longitude DECIMAL(11, 8) DEFAULT NULL,
-    FOREIGN KEY (department_id) REFERENCES departments(dept_id) ON DELETE CASCADE
-);
-```
-
----
-
-### Step 3: Configure Database Connection
-Ensure database credentials match your MySQL server settings in both PHP config files and the Python script:
-
-- **`userside/config.php`** & **`adminside/config.php`**:
-  ```php
-  $conn = new mysqli("localhost", "root", "", "otp_verification");
-  ```
-
-- **`process_complaints.py`**:
-  ```python
-  DB_CONFIG = {
-      "host": "localhost",
-      "user": "root",
-      "password": "",
-      "database": "otp_verification"
-  }
-  ```
-
----
-
-### Step 4: Python AI Environment Setup
-Install the Python dependencies required for semantic processing:
-
 ```bash
-pip install sentence-transformers scikit-learn numpy mysql-connector-python
+# Start XAMPP (Apache + MySQL)
+# Open phpMyAdmin at http://localhost/phpmyadmin
+# Import the schema file:
+#   database/civicpulse.sql
+```
+
+### Step 3: Environment Configuration
+```bash
+# Copy .env.example to .env (already done if you have .env)
+# Update the values in .env:
+
+DB_HOST=localhost
+DB_USER=root
+DB_PASS=
+DB_NAME=otp_verification
+
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+SMTP_FROM_NAME=CivicPulse
+SMTP_SECURE=tls
+```
+
+### Step 4: Python Dependencies (for AI grouping)
+```bash
+pip install sentence-transformers scikit-learn mysql-connector-python numpy python-dotenv
+```
+
+### Step 5: Create Admin Account
+```sql
+-- Run this in phpMyAdmin after importing schema
+-- Password: admin123 (will be hashed)
+INSERT INTO admin (name, email, password, dept_id, active, temp_pass)
+VALUES ('Admin', 'admin@civicpulse.com', 
+        '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 
+        1, 1, 0);
+-- Note: The above hash is for 'password'. Change after first login.
+```
+
+### Step 6: Access the Application
+```
+Citizen Portal:  http://localhost/Civicpulse/userside/about.php
+Citizen Login:   http://localhost/Civicpulse/userside/login.php
+Admin Login:     http://localhost/Civicpulse/adminside/adminlogin.php
+Central Admin:   http://localhost/Civicpulse/adminside/central_admin_dashboard.php
 ```
 
 ---
 
-### Step 5: Run the Application
+## 🔑 Environment Variables
 
-1. Move/copy the repository folder into your web server document root (e.g., `C:\xampp\htdocs\CivicPulse`).
-2. Open your browser and navigate to:
-   - **Public / User Portal**: `http://localhost/CivicPulse/index.php`
-   - **Admin Portal**: `http://localhost/CivicPulse/adminside/adminlogin.php`
-3. Launch the AI Complaint Processor to automatically cluster complaints and compute priority scores:
-   ```bash
-   python process_complaints.py
-   ```
-
----
-
-## 📊 How Priority Escalation Works
-
-The AI engine continuously inspects new complaints and updates master issue priority based on crowd-sourced reports:
-
-| Complaint Count | Assigned Priority Level |
-| :---: | :---: |
-| **1 - 2 Reports** | 🟢 **LOW** |
-| **3 - 5 Reports** | 🟡 **MEDIUM** |
-| **6+ Reports** | 🔴 **HIGH** |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DB_HOST` | MySQL host | Yes |
+| `DB_USER` | MySQL username | Yes |
+| `DB_PASS` | MySQL password | Yes |
+| `DB_NAME` | Database name | Yes |
+| `SMTP_HOST` | SMTP server host | Yes |
+| `SMTP_PORT` | SMTP server port | Yes |
+| `SMTP_USER` | SMTP email address | Yes |
+| `SMTP_PASS` | SMTP app password | Yes |
+| `SMTP_FROM_NAME` | Email sender name | No |
+| `SMTP_SECURE` | SMTP encryption (tls/ssl) | No |
+| `PYTHON_SCRIPT_PATH` | Custom path to AI script | No |
 
 ---
 
-## 🤝 Contributing
+## 📡 Key Routes / Pages
 
-Contributions are welcome! Please follow these steps:
-1. Fork the Project repository.
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`).
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-4. Push to the Branch (`git push origin feature/AmazingFeature`).
-5. Open a Pull Request.
+### Citizen
+| Route | Description |
+|-------|-------------|
+| `userside/login.php` | Citizen login |
+| `userside/signup.php` | Citizen registration |
+| `userside/home.php` | Citizen dashboard |
+| `userside/complaint.php` | Submit new complaint |
+| `userside/track.php` | Track complaint status |
+| `userside/profile.php` | View/edit profile |
+
+### Admin
+| Route | Description |
+|-------|-------------|
+| `adminside/adminlogin.php` | Admin login |
+| `adminside/dashboard.php` | Department dashboard |
+| `adminside/view_issue.php?id=X` | View issue details |
+| `adminside/assign_work.php?id=X` | Assign worker to issue |
+| `adminside/update_status.php?id=X` | Update issue status |
+| `adminside/workers.php` | Manage workers |
+| `adminside/reports.php` | Analytics & reports |
 
 ---
 
-## 📜 License
+## 🔮 Future Improvements
 
-Distributed under the MIT License. See `LICENSE` for more information.
+- Push/email notifications on status changes
+- Password reset via email
+- Multi-language support
+- Mobile app (React Native / Flutter)
+- Advanced duplicate detection with NLP
+- Department-wise performance metrics
+- Citizen feedback/rating after resolution
+- Export reports to PDF/CSV
+- Role-based admin hierarchy
+- Webhook integrations
 
 ---
 
+## 👤 Author
+
+**CivicPulse** — Smart Civic Governance System  
+Built for Real-World Impact
+
+---
+
+## 📄 License
+
+This project is for educational and civic-technology purposes.

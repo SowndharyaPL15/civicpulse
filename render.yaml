@@ -1,0 +1,64 @@
+# ==============================================================================
+# CivicPulse — Render Deployment Blueprint
+# Docs: https://render.com/docs/blueprint-spec
+# ==============================================================================
+services:
+  # CivicPulse Web Service (PHP 8.2 + Apache + Python AI)
+  - type: web
+    name: civicpulse-web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    healthCheckPath: /index.php
+    disk:
+      name: civicpulse-uploads
+      mountPath: /var/www/html/uploads
+      sizeGB: 5
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: civicpulse-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: civicpulse-db
+          property: port
+      - key: DB_USER
+        fromDatabase:
+          name: civicpulse-db
+          property: user
+      - key: DB_PASS
+        fromDatabase:
+          name: civicpulse-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: civicpulse-db
+          property: database
+      - key: DATABASE_URL
+        fromDatabase:
+          name: civicpulse-db
+          property: connectionString
+      - key: ADMIN_EMAIL
+        value: admin@civicpulse.com
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: ADMIN_NAME
+        value: Super Admin
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: CivicPulse
+      - key: SMTP_SECURE
+        value: tls
+
+# Managed Database (MySQL / PostgreSQL - Render offers PostgreSQL or external MySQL)
+# Note: For native MySQL on Render, you can connect an external MySQL (PlanetScale, Aiven)
+# or run a private Docker MySQL service if preferred.

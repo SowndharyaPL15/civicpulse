@@ -2,19 +2,70 @@ import mysql.connector
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+import os
+import math
 
 # -------------------------------------------------
-# CONFIG
+# LOAD ENVIRONMENT
 # -------------------------------------------------
+
+def load_env(path=None):
+    """Load .env file from project root."""
+    if path is None:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if os.path.exists(path):
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ.setdefault(key.strip(), value.strip())
+
+load_env()
+
+# -------------------------------------------------
+import urllib.parse
+
+def get_db_config():
+    db_url = os.environ.get("DATABASE_URL") or os.environ.get("MYSQL_URL") or os.environ.get("CLEARDB_DATABASE_URL")
+    if db_url:
+        parsed = urllib.parse.urlparse(db_url)
+        return {
+            "host": parsed.hostname or "localhost",
+            "port": parsed.port or 3306,
+            "user": parsed.username or "root",
+            "password": parsed.password or "",
+            "database": parsed.path.lstrip('/') if parsed.path else "otp_verification"
+        }
+    
+    return {
+        "host": os.environ.get("MYSQLHOST") or os.environ.get("DB_HOST", "localhost"),
+        "port": int(os.environ.get("MYSQLPORT") or os.environ.get("DB_PORT", 3306)),
+        "user": os.environ.get("MYSQLUSER") or os.environ.get("DB_USER", "root"),
+        "password": os.environ.get("MYSQLPASSWORD") or os.environ.get("DB_PASS") or os.environ.get("DB_PASSWORD", ""),
+        "database": os.environ.get("MYSQLDATABASE") or os.environ.get("DB_NAME", "otp_verification")
+    }
 
 SIMILARITY_THRESHOLD = 0.35
+DISTANCE_THRESHOLD_KM = 1.0  # Group complaints within 1.0 km
 
-DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "",
-    "database": "otp_verification"
-}
+DB_CONFIG = get_db_config()
+
+# -------------------------------------------------
+# DISTANCE HELPER
+# -------------------------------------------------
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+        return float('inf')
+    R = 6371.0  # Radius of earth in km
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
 
 # -------------------------------------------------
 # PRIORITY CALCULATION
@@ -35,10 +86,13 @@ def calculate_priority(count):
 
 print("Connecting to database...")
 
-conn = mysql.connector.connect(**DB_CONFIG)
-cursor = conn.cursor(dictionary=True)
-
-print("Database connected")
+try:
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor(dictionary=True)
+    print("Database connected")
+except mysql.connector.Error as e:
+    print(f"Database connection failed: {e}")
+    exit(1)
 
 
 # -------------------------------------------------
@@ -157,15 +211,25 @@ for complaint in complaints:
     if key in issue_groups and len(issue_groups[key]["ids"]) > 0:
 
         embeddings = issue_groups[key]["embeddings"]
-
         scores = cosine_similarity(complaint_embedding, embeddings)[0]
 
-        best_index = np.argmax(scores)
-        best_score = scores[best_index]
+        best_score = 0
+        best_index = -1
 
-        print(f"Complaint {cid} similarity score: {best_score:.2f}")
+        # Check distance for all candidate issues first
+        for idx in range(len(issue_groups[key]["ids"])):
+            issue_lat = issue_groups[key]["latitudes"][idx]
+            issue_lng = issue_groups[key]["longitudes"][idx]
 
-        if best_score >= SIMILARITY_THRESHOLD:
+            # Calculate distance using Haversine formula
+            dist = haversine_distance(lat, lng, issue_lat, issue_lng)
+
+            if dist <= DISTANCE_THRESHOLD_KM:
+                if scores[idx] > best_score:
+                    best_score = scores[idx]
+                    best_index = idx
+
+        if best_index != -1 and best_score >= SIMILARITY_THRESHOLD:
 
             matched_issue = issue_groups[key]["ids"][best_index]
 

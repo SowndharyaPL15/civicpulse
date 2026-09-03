@@ -77,15 +77,15 @@ $stmt->bind_param("iii",$issue_id,$worker_id,$admin_id);
 $stmt->execute();
 
 
-/* UPDATE ISSUE STATUS */
+/* UPDATE ISSUE STATUS AND ASSIGNED WORKER */
 
 $stmt = $conn->prepare("
 UPDATE issues
-SET status='In Progress'
+SET status='In Progress', assigned_worker_id=?
 WHERE id=?
 ");
 
-$stmt->bind_param("i",$issue_id);
+$stmt->bind_param("ii",$worker_id,$issue_id);
 $stmt->execute();
 
 
@@ -111,7 +111,8 @@ $success = true;
 <html>
 <head>
 
-<title>Assign Worker</title>
+<title>Assign Worker — CivicPulse</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 

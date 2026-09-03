@@ -7,17 +7,17 @@ header("Location: adminlogin.php");
 exit;
 }
 
-/* VALIDATE ISSUE ID */
+$admin_id = $_SESSION['admin_id'];
 
+/* VALIDATE ISSUE ID */
 if(!isset($_GET['id']) || !is_numeric($_GET['id'])){
 die("Invalid Issue ID");
 }
 
-$issue_id = $_GET['id'];
+$issue_id = intval($_GET['id']);
 
 
 /* GET ISSUE DETAILS */
-
 $stmt = $conn->prepare("
 SELECT i.*, d.dept_name
 FROM issues i
@@ -35,9 +35,10 @@ if(!$issue){
 die("Issue not found");
 }
 
+$old_status = $issue['status'];
+
 
 /* GET LAST ASSIGNED WORKER */
-
 $stmt = $conn->prepare("
 SELECT wa.*, w.name AS worker_name
 FROM work_assignments wa
@@ -55,56 +56,90 @@ $assignment = $assignment_result->fetch_assoc();
 
 
 /* UPDATE STATUS */
-
 if(isset($_POST['update'])){
 
 $status = $_POST['status'];
-$notes  = $_POST['notes'];
+$notes  = trim($_POST['notes'] ?? '');
 
-$stmt = $conn->prepare("UPDATE issues SET status=?, resolution_notes=? WHERE id=?");
-$stmt->bind_param("ssi",$status,$notes,$issue_id);
+/* Validate status value */
+$valid_statuses = ['Open', 'In Progress', 'Resolved'];
+if(!in_array($status, $valid_statuses)){
+    $error = "Invalid status value.";
+} else {
+
+    $stmt = $conn->prepare("UPDATE issues SET status=?, resolution_notes=? WHERE id=?");
+    $stmt->bind_param("ssi",$status,$notes,$issue_id);
+    $stmt->execute();
+
+    /* Record status history */
+    $stmt = $conn->prepare("INSERT INTO issue_status_history (issue_id, old_status, new_status, changed_by, notes) VALUES (?,?,?,?,?)");
+    $stmt->bind_param("issis", $issue_id, $old_status, $status, $admin_id, $notes);
+    $stmt->execute();
+
+    /* Add to issue_updates timeline */
+    $update_msg = "Status changed from '$old_status' to '$status'";
+    if(!empty($notes)){
+        $update_msg .= ". Notes: $notes";
+    }
+    $stmt = $conn->prepare("INSERT INTO issue_updates (issue_id, update_message, updated_by) VALUES (?,?,?)");
+    $stmt->bind_param("isi", $issue_id, $update_msg, $admin_id);
+    $stmt->execute();
+
+    /* IF RESOLVED → FREE WORKER */
+    if($status=="Resolved" && $assignment){
+
+        $worker = $assignment['worker_id'];
+
+        $stmt = $conn->prepare("UPDATE workers SET status='Available' WHERE worker_id=?");
+        $stmt->bind_param("i", $worker);
+        $stmt->execute();
+
+        $stmt = $conn->prepare("UPDATE work_assignments SET status='Completed', completed_at=NOW() WHERE issue_id=?");
+        $stmt->bind_param("i", $issue_id);
+        $stmt->execute();
+    }
+
+    $success = true;
+}
+
+}
+
+/* GET STATUS HISTORY */
+$stmt = $conn->prepare("
+SELECT * FROM issue_status_history
+WHERE issue_id=?
+ORDER BY created_at DESC
+LIMIT 10
+");
+$stmt->bind_param("i",$issue_id);
 $stmt->execute();
+$history = $stmt->get_result();
 
-
-/* IF RESOLVED → FREE WORKER */
-
-if($status=="Resolved" && $assignment){
-
-$worker = $assignment['worker_id'];
-
-$conn->query("UPDATE workers SET status='Available' WHERE worker_id=$worker");
-
-$conn->query("UPDATE work_assignments 
-SET status='Completed' 
-WHERE issue_id=$issue_id");
-
-}
-
-$success = true;
-
-}
 ?>
 
 <!DOCTYPE html>
 <html>
 <head>
 
-<title>Update Issue Status</title>
+<title>Update Issue Status — CivicPulse</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
 
 body{
 background:#eef2f7;
-font-family:Segoe UI;
+font-family:'Inter',sans-serif;
 }
 
 .container-box{
 max-width:900px;
 margin:auto;
-margin-top:60px;
+margin-top:40px;
+margin-bottom:40px;
 }
 
 .card{
@@ -112,9 +147,9 @@ border:none;
 border-radius:14px;
 }
 
-.priority-high{background:#dc2626;color:white;padding:4px 10px;border-radius:6px}
-.priority-medium{background:#f59e0b;color:white;padding:4px 10px;border-radius:6px}
-.priority-low{background:#16a34a;color:white;padding:4px 10px;border-radius:6px}
+.priority-high{background:#dc2626;color:white;padding:4px 10px;border-radius:6px;font-size:12px}
+.priority-medium{background:#f59e0b;color:white;padding:4px 10px;border-radius:6px;font-size:12px}
+.priority-low{background:#16a34a;color:white;padding:4px 10px;border-radius:6px;font-size:12px}
 
 .status-open{color:#dc2626;font-weight:600}
 .status-progress{color:#f59e0b;font-weight:600}
@@ -128,20 +163,25 @@ border-radius:14px;
 
 <div class="container container-box">
 
-<div class="card shadow p-4">
+<div class="card shadow p-4 mb-4">
 
-<h4 class="mb-4">
+<div class="d-flex justify-content-between align-items-center mb-3">
+<h4 class="m-0">
 <i class="bi bi-arrow-repeat"></i> Update Issue Status
 </h4>
-
-<?php if(isset($success)){ ?>
-
-<div class="alert alert-success">
-Status updated successfully!
-<a href="dashboard.php" class="btn btn-sm btn-success ms-3">Back to Dashboard</a>
+<a href="dashboard.php" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
 </div>
 
-<?php } ?>
+<?php if(isset($success)): ?>
+<div class="alert alert-success d-flex align-items-center gap-2">
+<i class="bi bi-check-circle"></i> Status updated successfully!
+<a href="dashboard.php" class="btn btn-sm btn-success ms-auto">Back to Dashboard</a>
+</div>
+<?php endif; ?>
+
+<?php if(isset($error)): ?>
+<div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+<?php endif; ?>
 
 <div class="row">
 
@@ -183,14 +223,12 @@ echo "<span class='status-resolved'>Resolved</span>";
 
 </p>
 
-<?php if($assignment){ ?>
-
+<?php if($assignment): ?>
 <p>
 <strong>Assigned Worker:</strong>
 <?php echo htmlspecialchars($assignment['worker_name']); ?>
 </p>
-
-<?php } ?>
+<?php endif; ?>
 
 </div>
 
@@ -204,16 +242,16 @@ echo "<span class='status-resolved'>Resolved</span>";
 
 <option value="">Select Status</option>
 
-<option value="Open">Open</option>
-<option value="In Progress">In Progress</option>
-<option value="Resolved">Resolved</option>
+<option value="Open" <?= $issue['status']=='Open'?'selected':'' ?>>Open</option>
+<option value="In Progress" <?= $issue['status']=='In Progress'?'selected':'' ?>>In Progress</option>
+<option value="Resolved" <?= $issue['status']=='Resolved'?'selected':'' ?>>Resolved</option>
 
 </select>
 
 <label class="form-label">Resolution Notes</label>
 
-<textarea name="notes" class="form-control mb-3"
-placeholder="Describe repair work done..."></textarea>
+<textarea name="notes" class="form-control mb-3" rows="3"
+placeholder="Describe repair work done..."><?= htmlspecialchars($issue['resolution_notes'] ?? '') ?></textarea>
 
 <button class="btn btn-primary w-100" name="update">
 
@@ -229,6 +267,38 @@ Update Status
 </div>
 
 </div>
+
+<!-- STATUS HISTORY -->
+<?php if($history && $history->num_rows > 0): ?>
+<div class="card shadow p-4">
+
+<h5><i class="bi bi-clock-history"></i> Status History</h5>
+
+<div class="table-responsive">
+<table class="table table-sm">
+<thead class="table-light">
+<tr>
+<th>From</th>
+<th>To</th>
+<th>Notes</th>
+<th>Date</th>
+</tr>
+</thead>
+<tbody>
+<?php while($h = $history->fetch_assoc()): ?>
+<tr>
+<td><?= htmlspecialchars($h['old_status'] ?? 'N/A') ?></td>
+<td><strong><?= htmlspecialchars($h['new_status']) ?></strong></td>
+<td><?= htmlspecialchars($h['notes'] ?? '-') ?></td>
+<td><?= $h['created_at'] ?></td>
+</tr>
+<?php endwhile; ?>
+</tbody>
+</table>
+</div>
+
+</div>
+<?php endif; ?>
 
 </div>
 

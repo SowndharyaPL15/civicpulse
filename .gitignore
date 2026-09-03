@@ -1,0 +1,28 @@
+# Environment files
+.env
+
+# Uploads directory (user-uploaded images)
+uploads/
+userside/uploads/
+
+# PHP dependencies
+vendor/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/

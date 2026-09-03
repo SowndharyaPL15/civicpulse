@@ -132,14 +132,14 @@ $stmt->execute();
 
 echo "<script>
 alert('Nearest worker assigned successfully');
-window.location='../view_issue.php?id=$issue_id';
+window.location='view_issue.php?id=$issue_id';
 </script>";
 
 }else{
 
 echo "<script>
 alert('No available worker found');
-window.location='../view_issue.php?id=$issue_id';
+window.location='view_issue.php?id=$issue_id';
 </script>";
 
 }

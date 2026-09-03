@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # CivicPulse Web App + AI Worker
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: civicpulse_app
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASS: civicpulse_secret
+      DB_NAME: otp_verification
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-CivicPulse}
+      SMTP_SECURE: ${SMTP_SECURE:-tls}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@civicpulse.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-password}
+      ADMIN_NAME: ${ADMIN_NAME:-Super Admin}
+    volumes:
+      - civicpulse_uploads:/var/www/html/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: civicpulse_db
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: civicpulse_secret
+      MYSQL_DATABASE: otp_verification
+    volumes:
+      - civicpulse_db_data:/var/lib/mysql
+      - ./database/civicpulse.sql:/docker-entrypoint-initdb.d/civicpulse.sql:ro
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pcivicpulse_secret"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # phpMyAdmin (Optional visual database UI)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: civicpulse_phpmyadmin
+    restart: always
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: civicpulse_secret
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  civicpulse_db_data:
+  civicpulse_uploads:
