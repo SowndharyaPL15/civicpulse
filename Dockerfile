@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libzip-dev \
     libicu-dev \
     default-mysql-client \
+    ca-certificates \
     curl \
     git \
     dos2unix \

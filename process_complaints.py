@@ -86,6 +86,13 @@ def calculate_priority(count):
 
 print("Connecting to database...")
 
+# Enable SSL if connecting to remote database (e.g. TiDB Cloud, Aiven, PlanetScale)
+if DB_CONFIG.get("host") not in ("localhost", "127.0.0.1", "db"):
+    ca_path = os.environ.get("MYSQL_SSL_CA", "/etc/ssl/certs/ca-certificates.crt")
+    if os.path.exists(ca_path):
+        DB_CONFIG["ssl_ca"] = ca_path
+    DB_CONFIG["ssl_disabled"] = False
+
 try:
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor(dictionary=True)
