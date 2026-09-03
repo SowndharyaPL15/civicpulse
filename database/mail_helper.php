@@ -1,29 +1,19 @@
 <?php
 /**
  * CivicPulse — Bulletproof Mail Helper
- * Automatically handles Gmail SMTP over TLS (587) with SSL (465) fallback and error logging.
+ * Supports:
+ *  1. Resend API (HTTPS Port 443 — Guaranteed on Render/Cloud with RESEND_API_KEY)
+ *  2. Brevo API (HTTPS Port 443 — with BREVO_API_KEY)
+ *  3. Gmail / Custom SMTP (PHPMailer over TLS 587 & SSL 465)
  */
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = null) {
-    $smtp_user = trim(getenv('SMTP_USER') ?: '');
-    $smtp_pass = str_replace(' ', '', getenv('SMTP_PASS') ?: '');
-
-    if (empty($smtp_user) || empty($smtp_pass)) {
-        $error_detail = "SMTP_USER or SMTP_PASS environment variable is not configured in Render.";
-        return false;
-    }
-
-    $smtp_host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+    $to_email = trim($to_email);
+    $to_name = trim($to_name ?: 'User');
     $from_name = getenv('SMTP_FROM_NAME') ?: 'CivicPulse';
-
-    $ports_to_try = [
-        ['port' => (int)(getenv('SMTP_PORT') ?: 587), 'secure' => getenv('SMTP_SECURE') ?: 'tls'],
-        ['port' => 465, 'secure' => 'ssl'],
-        ['port' => 587, 'secure' => 'tls'],
-    ];
 
     $html_body = "
     <div style='font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 30px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;'>
@@ -36,7 +26,95 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
         <p style='color: #9ca3af; font-size: 12px; margin: 0;'>If you did not request this OTP, you can safely ignore this email.</p>
     </div>";
 
-    foreach ($ports_to_try as $cfg) {
+    // -------------------------------------------------------------
+    // OPTION 1: Resend HTTP API (HTTPS Port 443 — Never blocked by Cloud)
+    // -------------------------------------------------------------
+    $resend_key = trim(getenv('RESEND_API_KEY') ?: '');
+    if (!empty($resend_key)) {
+        $ch = curl_init('https://api.resend.com/emails');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $resend_key,
+                'Content-Type: application/json'
+            ],
+            CURLOPT_POSTFIELDS => json_encode([
+                'from' => getenv('MAIL_FROM') ?: 'CivicPulse <onboarding@resend.dev>',
+                'to' => [$to_email],
+                'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
+                'html' => $html_body
+            ]),
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false
+        ]);
+        $res = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($code >= 200 && $code < 300) {
+            return true;
+        } else {
+            $error_detail = "Resend API error (HTTP $code): " . $res;
+            error_log($error_detail);
+        }
+    }
+
+    // -------------------------------------------------------------
+    // OPTION 2: Brevo HTTP API (HTTPS Port 443)
+    // -------------------------------------------------------------
+    $brevo_key = trim(getenv('BREVO_API_KEY') ?: '');
+    if (!empty($brevo_key)) {
+        $ch = curl_init('https://api.brevo.com/v3/smtp/email');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => [
+                'api-key: ' . $brevo_key,
+                'Content-Type: application/json',
+                'Accept: application/json'
+            ],
+            CURLOPT_POSTFIELDS => json_encode([
+                'sender' => ['name' => $from_name, 'email' => getenv('SMTP_USER') ?: 'admin@civicpulse.org'],
+                'to' => [['email' => $to_email, 'name' => $to_name]],
+                'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
+                'htmlContent' => $html_body
+            ]),
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false
+        ]);
+        $res = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($code >= 200 && $code < 300) {
+            return true;
+        } else {
+            $error_detail = "Brevo API error (HTTP $code): " . $res;
+            error_log($error_detail);
+        }
+    }
+
+    // -------------------------------------------------------------
+    // OPTION 3: Gmail SMTP / Custom SMTP via PHPMailer
+    // -------------------------------------------------------------
+    $smtp_user = trim(getenv('SMTP_USER') ?: '');
+    $smtp_pass = str_replace(' ', '', getenv('SMTP_PASS') ?: '');
+
+    if (empty($smtp_user) || empty($smtp_pass)) {
+        $error_detail = "No SMTP credentials or API key configured.";
+        return false;
+    }
+
+    $smtp_host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+
+    $configs = [
+        ['port' => 465, 'secure' => 'ssl'],
+        ['port' => 587, 'secure' => 'tls'],
+        ['port' => 2525, 'secure' => 'tls'],
+    ];
+
+    foreach ($configs as $cfg) {
         $mail = new PHPMailer(true);
         try {
             $mail->isSMTP();
@@ -46,7 +124,7 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
             $mail->Password   = $smtp_pass;
             $mail->SMTPSecure = $cfg['secure'];
             $mail->Port       = $cfg['port'];
-            $mail->Timeout    = 10;
+            $mail->Timeout    = 8;
             $mail->CharSet    = 'UTF-8';
 
             $mail->SMTPOptions = [
@@ -69,7 +147,7 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
             return true;
         } catch (Exception $e) {
             $error_detail = $mail->ErrorInfo ?: $e->getMessage();
-            error_log("PHPMailer attempt failed on port {$cfg['port']} ({$cfg['secure']}): " . $error_detail);
+            error_log("SMTP attempt failed on port {$cfg['port']} ({$cfg['secure']}): " . $error_detail);
         }
     }
 
