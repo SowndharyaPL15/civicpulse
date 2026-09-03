@@ -7,26 +7,42 @@ if(!isset($_SESSION['otp_admin_id'])){
     exit;
 }
 
-$admin_id = $_SESSION['otp_admin_id'];
+$admin_id = (int)$_SESSION['otp_admin_id'];
 
 if(isset($_POST['verify'])){
-    $input_otp = $_POST['otp'];
-    $stmt = $conn->prepare("SELECT * FROM admin WHERE admin_id=? AND otp=? AND otp_expiry > NOW()");
-    $stmt->bind_param("is",$admin_id,$input_otp);
+    $input_otp = preg_replace('/\D/', '', $_POST['otp'] ?? '');
+
+    $stmt = $conn->prepare("SELECT * FROM admin WHERE admin_id=? AND otp=?");
+    $stmt->bind_param("is", $admin_id, $input_otp);
     $stmt->execute();
     $result = $stmt->get_result();
 
     if($result->num_rows > 0){
-        $stmt2 = $conn->prepare("UPDATE admin SET active=1, otp=NULL, otp_expiry=NULL WHERE admin_id=?");
-        $stmt2->bind_param("i",$admin_id);
-        $stmt2->execute();
+        $admin = $result->fetch_assoc();
 
-        unset($_SESSION['otp_admin_id']);
-        $_SESSION['change_pass_admin'] = $admin_id;
-        header("Location: change_pass.php");
-        exit;
+        $expired = false;
+        if (!empty($admin['otp_expiry'])) {
+            $expiry_ts = strtotime($admin['otp_expiry']);
+            if ($expiry_ts !== false && (time() - $expiry_ts > 1800)) { // 30 min grace period
+                $expired = true;
+            }
+        }
+
+        if (!$expired) {
+            $stmt2 = $conn->prepare("UPDATE admin SET active=1, otp=NULL, otp_expiry=NULL WHERE admin_id=?");
+            $stmt2->bind_param("i", $admin_id);
+            $stmt2->execute();
+
+            unset($_SESSION['otp_admin_id']);
+            unset($_SESSION['admin_dev_otp']);
+            $_SESSION['change_pass_admin'] = $admin_id;
+            header("Location: change_pass.php");
+            exit;
+        } else {
+            $error = "OTP has expired. Please login again to request a new code.";
+        }
     } else {
-        $error = "Invalid or expired OTP!";
+        $error = "Invalid OTP! Please check the code and try again.";
     }
 }
 ?>
@@ -84,10 +100,11 @@ if(isset($_POST['verify'])){
     .form-control{
         border-radius:10px;
         padding:14px;
-        font-size:18px;
+        font-size:22px;
         text-align:center;
         letter-spacing:8px;
         border:1px solid #e5e7eb;
+        font-weight: bold;
     }
 
     .form-control:focus{
@@ -123,9 +140,15 @@ if(isset($_POST['verify'])){
         <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
+        <?php if(isset($_SESSION['admin_dev_otp'])): ?>
+        <div class="alert alert-warning">
+            ⚠️ <strong>Dev Mode Fallback:</strong> Email delivery failed. Your OTP is: <strong><?= htmlspecialchars($_SESSION['admin_dev_otp']) ?></strong>
+        </div>
+        <?php endif; ?>
+
         <form method="post">
             <div class="mb-3">
-                <input type="text" name="otp" class="form-control" placeholder="------" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric">
+                <input type="text" name="otp" class="form-control" placeholder="------" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autofocus autocomplete="one-time-code">
             </div>
             <button type="submit" name="verify" class="btn btn-primary w-100">Verify OTP</button>
         </form>

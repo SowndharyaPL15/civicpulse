@@ -27,44 +27,57 @@ if($admin && password_verify($password,$admin['password'])){
 if($admin['active']==0){
 
 $otp = rand(100000,999999);
-$expiry = date('Y-m-d H:i:s',strtotime('+15 minutes'));
+$expiry = date('Y-m-d H:i:s',strtotime('+30 minutes'));
 
 $stmt2=$conn->prepare("UPDATE admin SET otp=?, otp_expiry=? WHERE admin_id=?");
 $stmt2->bind_param("ssi",$otp,$expiry,$admin['admin_id']);
 $stmt2->execute();
 
-$mail = new PHPMailer(true);
+$smtp_user = trim(getenv('SMTP_USER') ?: '');
+$smtp_pass = str_replace(' ', '', getenv('SMTP_PASS') ?: '');
+$sent = false;
 
-try{
+if(!empty($smtp_user) && !empty($smtp_pass)){
+    $mail = new PHPMailer(true);
+    try{
+        $mail->isSMTP();
+        $mail->Host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+        $mail->SMTPAuth = true;
+        $mail->Username = $smtp_user;
+        $mail->Password = $smtp_pass;
+        $mail->SMTPSecure = getenv('SMTP_SECURE') ?: 'tls';
+        $mail->Port = (int)(getenv('SMTP_PORT') ?: 587);
+        $mail->SMTPOptions = [
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            ]
+        ];
 
-$mail->isSMTP();
-$mail->Host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
-$mail->SMTPAuth = true;
-$mail->Username = getenv('SMTP_USER') ?: '';
-$mail->Password = getenv('SMTP_PASS') ?: '';
-$mail->SMTPSecure = getenv('SMTP_SECURE') ?: 'tls';
-$mail->Port = getenv('SMTP_PORT') ?: 587;
+        $smtp_from_name = getenv('SMTP_FROM_NAME') ?: 'CivicPulse Admin';
+        $mail->setFrom($smtp_user, $smtp_from_name);
+        $mail->addAddress($admin['email']);
 
-$smtp_from = getenv('SMTP_USER') ?: '';
-$smtp_name = getenv('SMTP_FROM_NAME') ?: 'CivicPulse Admin';
-$mail->setFrom($smtp_from, $smtp_name);
-$mail->addAddress($admin['email']);
+        $mail->isHTML(true);
+        $mail->Subject='Admin OTP Verification — CivicPulse';
+        $mail->Body="Your OTP is: <b>$otp</b>. It expires in 30 minutes.";
 
-$mail->isHTML(true);
-$mail->Subject='Admin OTP Verification';
-$mail->Body="Your OTP is: <b>$otp</b>. It expires in 15 minutes.";
-
-$mail->send();
-
-}catch(Exception $e){
-$error = "OTP could not be sent. Please check SMTP configuration.";
+        $mail->send();
+        $sent = true;
+    }catch(Exception $e){
+        error_log("Admin PHPMailer error: " . $e->getMessage());
+    }
 }
 
-if(!isset($error)){
-    $_SESSION['otp_admin_id']=$admin['admin_id'];
-    header("Location: admin_otp.php");
-    exit;
+$_SESSION['otp_admin_id']=$admin['admin_id'];
+if(!$sent){
+    $_SESSION['admin_dev_otp'] = $otp;
+} else {
+    unset($_SESSION['admin_dev_otp']);
 }
+header("Location: admin_otp.php");
+exit;
 
 }
 

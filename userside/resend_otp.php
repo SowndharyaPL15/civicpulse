@@ -15,7 +15,7 @@ if(!isset($_SESSION['email'])){
     exit;
 }
 
-$email = $_SESSION['email'];
+$email = trim($_SESSION['email']);
 $error = '';
 $success = '';
 
@@ -29,7 +29,7 @@ if(isset($_POST['resend'])){
     $stmt->bind_param("ss", $otp, $email);
     $stmt->execute();
 
-    if($stmt->affected_rows > 0){
+    if($stmt->affected_rows >= 0){
 
         // Fetch user name
         $stmt2 = $conn->prepare("SELECT name FROM user WHERE email=?");
@@ -38,40 +38,60 @@ if(isset($_POST['resend'])){
         $user = $stmt2->get_result()->fetch_assoc();
         $name = $user['name'] ?? 'User';
 
-        // Send new OTP
-        $mail = new PHPMailer(true);
-        try {
-            $mail->isSMTP();
-            $mail->Host       = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
-            $mail->SMTPAuth   = true;
-            $mail->Username   = getenv('SMTP_USER') ?: '';
-            $mail->Password   = getenv('SMTP_PASS') ?: '';
-            $mail->SMTPSecure = getenv('SMTP_SECURE') ?: 'tls';
-            $mail->Port       = getenv('SMTP_PORT') ?: 587;
+        $smtp_user = trim(getenv('SMTP_USER') ?: '');
+        $smtp_pass = str_replace(' ', '', getenv('SMTP_PASS') ?: '');
+        $sent = false;
 
-            $smtp_from = getenv('SMTP_USER') ?: '';
-            $smtp_name = getenv('SMTP_FROM_NAME') ?: 'CivicPulse';
-            $mail->setFrom($smtp_from, $smtp_name);
-            $mail->addAddress($email, $name);
+        if (!empty($smtp_user) && !empty($smtp_pass)) {
+            $mail = new PHPMailer(true);
+            try {
+                $mail->isSMTP();
+                $mail->Host       = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+                $mail->SMTPAuth   = true;
+                $mail->Username   = $smtp_user;
+                $mail->Password   = $smtp_pass;
+                $mail->SMTPSecure = getenv('SMTP_SECURE') ?: 'tls';
+                $mail->Port       = (int)(getenv('SMTP_PORT') ?: 587);
+                $mail->SMTPOptions = [
+                    'ssl' => [
+                        'verify_peer' => false,
+                        'verify_peer_name' => false,
+                        'allow_self_signed' => true
+                    ]
+                ];
 
-            $mail->isHTML(true);
-            $mail->Subject = 'Your New CivicPulse OTP Code';
-            $mail->Body    = "
-            <div style='font-family:Arial;max-width:500px;margin:auto;padding:30px;border:1px solid #e5e7eb;border-radius:12px;'>
-            <h2 style='color:#2563eb;'>CivicPulse</h2>
-            <p>Hi <strong>$name</strong>,</p>
-            <p>Your new OTP verification code is:</p>
-            <div style='font-size:32px;font-weight:bold;color:#2563eb;letter-spacing:8px;padding:15px;background:#f1f5f9;border-radius:8px;text-align:center;'>$otp</div>
-            <p style='margin-top:15px;color:#6b7280;'>Use this code to verify your account.</p>
-            </div>";
+                $smtp_from_name = getenv('SMTP_FROM_NAME') ?: 'CivicPulse';
+                $mail->setFrom($smtp_user, $smtp_from_name);
+                $mail->addAddress($email, $name);
 
-            $mail->send();
-            $success = "A new OTP has been sent to your email.";
+                $mail->isHTML(true);
+                $mail->Subject = 'Your New CivicPulse OTP Code';
+                $mail->Body    = "
+                <div style='font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #e5e7eb;border-radius:12px;'>
+                <h2 style='color:#2563eb;'>CivicPulse</h2>
+                <p>Hi <strong>" . htmlspecialchars($name) . "</strong>,</p>
+                <p>Your new OTP verification code is:</p>
+                <div style='font-size:32px;font-weight:bold;color:#2563eb;letter-spacing:8px;padding:15px;background:#f1f5f9;border-radius:8px;text-align:center;'>$otp</div>
+                <p style='margin-top:15px;color:#6b7280;'>Use this code to verify your account.</p>
+                </div>";
 
-        } catch (Exception $e) {
-            $_SESSION['dev_otp'] = $otp;
-            $success = "Dev Mode Fallback: New OTP generated.";
+                $mail->send();
+                $sent = true;
+                $success = "A new OTP has been sent to your email.";
+            } catch (Exception $e) {
+                error_log("PHPMailer error: " . $e->getMessage());
+            }
         }
+
+        if (!$sent) {
+            $_SESSION['dev_otp'] = $otp;
+            $success = "New OTP generated successfully.";
+        } else {
+            unset($_SESSION['dev_otp']);
+        }
+
+        header("Location: verify_otp.php");
+        exit;
 
     } else {
         $error = "Account not found or already verified.";

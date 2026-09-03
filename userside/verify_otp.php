@@ -8,13 +8,13 @@ if(!isset($_SESSION['email'])){
     exit;
 }
 
-$email = $_SESSION['email'];
+$email = trim($_SESSION['email']);
 
 if(isset($_POST['verify'])){
-    $entered_otp = trim($_POST['otp']);
+    $entered_otp = preg_replace('/\D/', '', $_POST['otp'] ?? '');
 
-    // Fetch OTP and status from DB using prepared statement
-    $stmt = $conn->prepare("SELECT otp, status FROM user WHERE email=?");
+    // Fetch user details from DB
+    $stmt = $conn->prepare("SELECT uid, name, email, otp, status FROM user WHERE email=?");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -22,19 +22,27 @@ if(isset($_POST['verify'])){
     if($res->num_rows > 0){
         $row = $res->fetch_assoc();
 
-        if($row['status'] == 'active'){
-            $info = "Your account is already verified. Please login.";
-        } elseif($row['otp'] == $entered_otp){
+        if($row['status'] === 'active'){
+            // Already active - log in and redirect
+            $_SESSION['user_id'] = $row['uid'];
+            $_SESSION['user_name'] = $row['name'];
+            unset($_SESSION['dev_otp']);
+            header("Location: home.php");
+            exit;
+        } elseif(!empty($entered_otp) && trim((string)$row['otp']) === $entered_otp){
             // Activate account
-            $stmt2 = $conn->prepare("UPDATE user SET status='active', otp=NULL WHERE email=?");
-            $stmt2->bind_param("s", $email);
+            $stmt2 = $conn->prepare("UPDATE user SET status='active', otp=NULL WHERE uid=?");
+            $stmt2->bind_param("i", $row['uid']);
             $stmt2->execute();
 
+            // Set session & redirect straight to dashboard
             unset($_SESSION['dev_otp']);
-            session_destroy();
-            $success = true;
+            $_SESSION['user_id'] = $row['uid'];
+            $_SESSION['user_name'] = $row['name'];
+            header("Location: home.php");
+            exit;
         } else {
-            $error = "Invalid OTP! Please try again.";
+            $error = "Invalid OTP! Please check the code or click Resend OTP.";
         }
     } else {
         $error = "User not found. Please register again.";
@@ -51,9 +59,10 @@ if(isset($_POST['verify'])){
     <link rel="stylesheet" href="styles.css">
     <style>
     .otp-input{
-        font-size:20px;
-        letter-spacing:6px;
+        font-size:22px;
+        letter-spacing:8px;
         text-align:center;
+        font-weight:bold;
     }
     </style>
 </head>
@@ -61,22 +70,10 @@ if(isset($_POST['verify'])){
 <div class="container">
     <div class="form-box">
         <h2>OTP Verification</h2>
-        <p>Enter the OTP sent to: <strong><?= htmlspecialchars($email) ?></strong></p>
-
-        <?php if(isset($success)): ?>
-        <div class="success">
-            ✅ Registration successful! You can now login.
-        </div>
-        <p><a href="login.php">Click here to Login</a></p>
-
-        <?php elseif(isset($info)): ?>
-        <div class="success"><?= htmlspecialchars($info) ?></div>
-        <p><a href="login.php">Click here to Login</a></p>
-
-        <?php else: ?>
+        <p>Enter the 6-digit OTP sent to: <strong><?= htmlspecialchars($email) ?></strong></p>
 
         <?php if(isset($error)): ?>
-        <div class="error"><?= htmlspecialchars($error) ?></div>
+        <div class="error" style="margin-bottom:15px; color:#dc2626; background:#fee2e2; padding:10px; border-radius:8px;"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
         <?php if(isset($_SESSION['dev_otp'])): ?>
@@ -86,15 +83,13 @@ if(isset($_POST['verify'])){
         <?php endif; ?>
 
         <form method="POST">
-            <input type="text" name="otp" class="otp-input" placeholder="------" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric">
-            <button type="submit" name="verify">Verify OTP</button>
+            <input type="text" name="otp" class="otp-input" placeholder="------" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autofocus autocomplete="one-time-code">
+            <button type="submit" name="verify">Verify & Continue</button>
         </form>
 
         <p style="margin-top:15px;">
-            Didn't receive OTP? <a href="resend_otp.php">Resend OTP</a>
+            Didn't receive OTP? <a href="resend_otp.php">Resend OTP</a> &bull; <a href="signup.php">Change Email</a>
         </p>
-
-        <?php endif; ?>
     </div>
 </div>
 </body>
