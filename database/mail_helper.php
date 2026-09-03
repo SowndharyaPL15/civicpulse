@@ -31,32 +31,62 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
     // -------------------------------------------------------------
     $resend_key = trim(getenv('RESEND_API_KEY') ?: '');
     if (!empty($resend_key)) {
-        $ch = curl_init('https://api.resend.com/emails');
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $resend_key,
-                'Content-Type: application/json'
-            ],
-            CURLOPT_POSTFIELDS => json_encode([
-                'from' => getenv('MAIL_FROM') ?: 'CivicPulse <onboarding@resend.dev>',
-                'to' => [$to_email],
-                'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
-                'html' => $html_body
-            ]),
-            CURLOPT_TIMEOUT => 10,
-            CURLOPT_SSL_VERIFYPEER => false
+        $payload = json_encode([
+            'from' => getenv('MAIL_FROM') ?: 'CivicPulse <onboarding@resend.dev>',
+            'to' => [$to_email],
+            'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
+            'html' => $html_body
         ]);
-        $res = curl_exec($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
-        if ($code >= 200 && $code < 300) {
-            return true;
+        if (function_exists('curl_init')) {
+            $ch = curl_init('https://api.resend.com/emails');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $resend_key,
+                    'Content-Type: application/json'
+                ],
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_TIMEOUT => 15,
+                CURLOPT_SSL_VERIFYPEER => false
+            ]);
+            $res = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_err = curl_error($ch);
+            curl_close($ch);
+
+            if ($code >= 200 && $code < 300) {
+                return true;
+            } else {
+                $error_detail = "Resend API error (HTTP $code): " . ($res ?: $curl_err);
+                error_log($error_detail);
+            }
         } else {
-            $error_detail = "Resend API error (HTTP $code): " . $res;
-            error_log($error_detail);
+            $context = stream_context_create([
+                'http' => [
+                    'method' => 'POST',
+                    'header' => "Authorization: Bearer {$resend_key}\r\nContent-Type: application/json\r\n",
+                    'content' => $payload,
+                    'timeout' => 15,
+                    'ignore_errors' => true
+                ],
+                'ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false
+                ]
+            ]);
+            $res = @file_get_contents('https://api.resend.com/emails', false, $context);
+            if ($res !== false) {
+                $json = json_decode($res, true);
+                if (isset($json['id'])) {
+                    return true;
+                } else {
+                    $error_detail = "Resend API response: " . $res;
+                }
+            } else {
+                $error_detail = "Resend HTTP request failed.";
+            }
         }
     }
 
