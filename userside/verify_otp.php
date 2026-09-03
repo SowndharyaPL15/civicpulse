@@ -77,8 +77,9 @@ if(isset($_POST['verify'])){
         <?php endif; ?>
 
         <?php if(isset($_SESSION['dev_otp'])): ?>
-        <div class="success" style="background-color: #fff3cd; color: #856404; border-left: 5px solid #ffc107; margin-bottom:15px; padding:10px; border-radius:6px;">
-            ⚠️ <strong>Dev Mode Fallback:</strong> Email delivery failed. Your OTP is: <strong><?= htmlspecialchars($_SESSION['dev_otp']) ?></strong>
+        <div class="success" style="background-color: #fff3cd; color: #856404; border-left: 5px solid #ffc107; margin-bottom:15px; padding:12px; border-radius:6px; font-size:14px;">
+            ⚠️ <strong>Dev Mode Fallback:</strong> <?= htmlspecialchars($_SESSION['mail_error'] ?? 'Email delivery failed.') ?><br>
+            👉 Enter this OTP to continue: <strong style="font-size:18px; color:#1e3a8a; letter-spacing:2px;"><?= htmlspecialchars($_SESSION['dev_otp']) ?></strong>
         </div>
         <?php endif; ?>
 
