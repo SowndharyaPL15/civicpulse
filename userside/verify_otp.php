@@ -76,6 +76,13 @@ if(isset($_POST['verify'])){
         <div class="error" style="margin-bottom:15px; color:#dc2626; background:#fee2e2; padding:10px; border-radius:8px;"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
+        <?php if(isset($_SESSION['resend_success'])): ?>
+        <div class="success" style="background-color: #dcfce7; color: #15803d; border-left: 5px solid #22c55e; margin-bottom:15px; padding:12px; border-radius:6px; font-size:14px;">
+            <?= htmlspecialchars($_SESSION['resend_success']) ?>
+        </div>
+        <?php unset($_SESSION['resend_success']); ?>
+        <?php endif; ?>
+
         <?php if(isset($_SESSION['dev_otp'])): ?>
         <div class="success" style="background-color: #fff3cd; color: #856404; border-left: 5px solid #ffc107; margin-bottom:18px; padding:14px; border-radius:8px; font-size:14px; text-align:left;">
             <div style="font-weight:600; margin-bottom:6px;">⚠️ Dev Mode Fallback Active</div>
