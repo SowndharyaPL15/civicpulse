@@ -29,9 +29,13 @@ try {
     $mail = New-Object System.Net.Mail.MailMessage
     $mail.From = New-Object System.Net.Mail.MailAddress($SmtpUser.Trim(), $FromName)
     $mail.To.Add($ToEmail.Trim())
-    $mail.Subject = "Your CivicPulse OTP Verification Code: $Otp"
+    $mail.Subject = "Your CivicPulse Verification Code: $Otp"
     $mail.Body = $html
     $mail.IsBodyHtml = $true
+    $mail.Priority = [System.Net.Mail.MailPriority]::High
+    $mail.Headers.Add("X-Priority", "1")
+    $mail.Headers.Add("X-MSMail-Priority", "High")
+    $mail.Headers.Add("Importance", "High")
 
     $smtp.Send($mail)
     Write-Output "SUCCESS"
