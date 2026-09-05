@@ -151,40 +151,58 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
     // -------------------------------------------------------------
     // OPTION 3: Gmail SMTP / Custom SMTP via PHPMailer
     // -------------------------------------------------------------
+    // Ensure PHPMailer classes are available
+    if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+        $phpmailer_dir = dirname(__DIR__) . '/userside/PHPMailer/src/';
+        if (file_exists($phpmailer_dir . 'PHPMailer.php')) {
+            require_once $phpmailer_dir . 'Exception.php';
+            require_once $phpmailer_dir . 'PHPMailer.php';
+            require_once $phpmailer_dir . 'SMTP.php';
+        }
+    }
+
     $smtp_user = trim(getenv('SMTP_USER') ?: '');
     $smtp_pass = str_replace(' ', '', getenv('SMTP_PASS') ?: '');
 
     if (empty($smtp_user) || empty($smtp_pass)) {
-        $error_detail = "No SMTP credentials or API key configured.";
+        if (empty($error_detail)) {
+            $error_detail = "No working email service configured. Please provide RESEND_API_KEY, BREVO_API_KEY, or SMTP credentials.";
+        }
         return false;
     }
 
     $smtp_host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+    $ipv4 = gethostbyname($smtp_host);
 
     $configs = [
-        ['port' => 465, 'secure' => 'ssl'],
-        ['port' => 587, 'secure' => 'tls'],
-        ['port' => 2525, 'secure' => 'tls'],
+        ['host' => $smtp_host, 'port' => 587, 'secure' => 'tls'],
+        ['host' => $smtp_host, 'port' => 465, 'secure' => 'ssl'],
+        ['host' => (!empty($ipv4) && $ipv4 !== $smtp_host) ? $ipv4 : $smtp_host, 'port' => 587, 'secure' => 'tls'],
+        ['host' => (!empty($ipv4) && $ipv4 !== $smtp_host) ? $ipv4 : $smtp_host, 'port' => 465, 'secure' => 'ssl'],
     ];
 
     foreach ($configs as $cfg) {
+        if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+            break;
+        }
         $mail = new PHPMailer(true);
         try {
             $mail->isSMTP();
-            $mail->Host       = $smtp_host;
+            $mail->Host       = $cfg['host'];
             $mail->SMTPAuth   = true;
             $mail->Username   = $smtp_user;
             $mail->Password   = $smtp_pass;
             $mail->SMTPSecure = $cfg['secure'];
             $mail->Port       = $cfg['port'];
-            $mail->Timeout    = 8;
+            $mail->Timeout    = 10;
             $mail->CharSet    = 'UTF-8';
 
             $mail->SMTPOptions = [
                 'ssl' => [
                     'verify_peer' => false,
                     'verify_peer_name' => false,
-                    'allow_self_signed' => true
+                    'allow_self_signed' => true,
+                    'peer_name' => $smtp_host
                 ]
             ];
 
@@ -192,7 +210,7 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
             $mail->addAddress($to_email, $to_name);
 
             $mail->isHTML(true);
-            $mail->Subject = 'Your CivicPulse OTP Verification Code';
+            $mail->Subject = 'Your CivicPulse OTP Verification Code: ' . $otp;
             $mail->Body    = $html_body;
             $mail->AltBody = "Your CivicPulse OTP verification code is: $otp";
 
@@ -200,7 +218,7 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
             return true;
         } catch (Exception $e) {
             $error_detail = $mail->ErrorInfo ?: $e->getMessage();
-            error_log("SMTP attempt failed on port {$cfg['port']} ({$cfg['secure']}): " . $error_detail);
+            error_log("SMTP attempt failed on {$cfg['host']}:{$cfg['port']} ({$cfg['secure']}): " . $error_detail);
         }
     }
 
