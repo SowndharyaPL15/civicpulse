@@ -47,8 +47,33 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
         <p style='color: #9ca3af; font-size: 12px; margin: 0;'>If you did not request this OTP, you can safely ignore this email.</p>
     </div>";
 
+    $smtp_user = trim(getenv('SMTP_USER') ?: '');
+    $smtp_pass = str_replace(' ', '', getenv('SMTP_PASS') ?: '');
+
     // -------------------------------------------------------------
-    // OPTION 1: Resend HTTP API (HTTPS Port 443 — Never blocked by Cloud)
+    // OPTION 1: Google App Password SMTP via Windows Native Bridge (100% Reliable on Windows)
+    // -------------------------------------------------------------
+    if (!empty($smtp_user) && !empty($smtp_pass) && strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        $ps_script = __DIR__ . DIRECTORY_SEPARATOR . 'send_smtp.ps1';
+        if (file_exists($ps_script)) {
+            $cmd = 'powershell.exe -ExecutionPolicy Bypass -NoProfile -File ' . escapeshellarg($ps_script) . 
+                   ' -ToEmail ' . escapeshellarg($to_email) . 
+                   ' -ToName ' . escapeshellarg($to_name) . 
+                   ' -Otp ' . escapeshellarg($otp) . 
+                   ' -SmtpUser ' . escapeshellarg($smtp_user) . 
+                   ' -SmtpPass ' . escapeshellarg($smtp_pass) . 
+                   ' -FromName ' . escapeshellarg($from_name) . ' 2>&1';
+            $output = @shell_exec($cmd);
+            if ($output && strpos($output, 'SUCCESS') !== false) {
+                return true;
+            }
+            $error_detail = "Windows SMTP Bridge: " . trim($output ?: 'Execution failed');
+            error_log($error_detail);
+        }
+    }
+
+    // -------------------------------------------------------------
+    // OPTION 2: Resend HTTP API (HTTPS Port 443 — Guaranteed on Render/Cloud with RESEND_API_KEY)
     // -------------------------------------------------------------
     $resend_key = trim(getenv('RESEND_API_KEY') ?: '');
     if (!empty($resend_key)) {
