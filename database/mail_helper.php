@@ -10,6 +10,27 @@
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
+// Ensure .env is loaded
+if (function_exists('civicpulse_load_env')) {
+    civicpulse_load_env(dirname(__DIR__) . '/.env');
+} elseif (file_exists(dirname(__DIR__) . '/.env')) {
+    $lines = file(dirname(__DIR__) . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#') continue;
+        if (strpos($line, '=') !== false) {
+            list($key, $value) = explode('=', $line, 2);
+            $key = trim($key);
+            $value = trim($value, " \t\n\r\0\x0B\"'");
+            if (getenv($key) === false && !array_key_exists($key, $_ENV)) {
+                putenv("$key=$value");
+                $_ENV[$key] = $value;
+                $_SERVER[$key] = $value;
+            }
+        }
+    }
+}
+
 function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = null) {
     $to_email = trim($to_email);
     $to_name = trim($to_name ?: 'User');
@@ -59,7 +80,9 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
             if ($code >= 200 && $code < 300) {
                 return true;
             } else {
-                $error_detail = "Resend API error (HTTP $code): " . ($res ?: $curl_err);
+                $err_json = json_decode($res, true);
+                $msg = $err_json['message'] ?? ($res ?: $curl_err);
+                $error_detail = "Resend API error (HTTP $code): " . $msg;
                 error_log($error_detail);
             }
         } else {

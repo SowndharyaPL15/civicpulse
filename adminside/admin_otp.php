@@ -141,9 +141,24 @@ if(isset($_POST['verify'])){
         <?php endif; ?>
 
         <?php if(isset($_SESSION['admin_dev_otp'])): ?>
-        <div class="alert alert-warning">
-            ⚠️ <strong>Dev Mode Fallback:</strong> Email delivery failed. Your OTP is: <strong><?= htmlspecialchars($_SESSION['admin_dev_otp']) ?></strong>
+        <div class="alert alert-warning text-start">
+            <div class="fw-bold mb-1">⚠️ Dev Mode Fallback Active</div>
+            <div class="small text-muted mb-2">SMTP connection timed out. Your admin verification code is:</div>
+            <div class="d-flex align-items-center justify-content-between bg-white p-2 rounded border border-warning">
+                <span id="adminDevOtpVal" class="fs-4 fw-bold text-primary" style="letter-spacing: 3px;"><?= htmlspecialchars($_SESSION['admin_dev_otp']) ?></span>
+                <button type="button" class="btn btn-sm btn-primary" onclick="autoFillAdminOtp()">⚡ Auto-Fill</button>
+            </div>
         </div>
+        <script>
+        function autoFillAdminOtp() {
+            var otp = document.getElementById('adminDevOtpVal').innerText.trim();
+            var input = document.querySelector('input[name="otp"]');
+            if (input) {
+                input.value = otp;
+                input.focus();
+            }
+        }
+        </script>
         <?php endif; ?>
 
         <form method="post">
