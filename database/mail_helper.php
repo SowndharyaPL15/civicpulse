@@ -51,24 +51,125 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
     $smtp_pass = str_replace(' ', '', getenv('SMTP_PASS') ?: '');
 
     // -------------------------------------------------------------
-    // OPTION 1: Google App Password SMTP via Windows Native Bridge (100% Reliable on Windows)
+    // PRIORITY 1: Google App Password via Pure Direct PHP Socket (Port 465 SSL & Port 587 TLS)
     // -------------------------------------------------------------
-    if (!empty($smtp_user) && !empty($smtp_pass) && strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-        $ps_script = __DIR__ . DIRECTORY_SEPARATOR . 'send_smtp.ps1';
-        if (file_exists($ps_script)) {
-            $cmd = 'powershell.exe -ExecutionPolicy Bypass -NoProfile -File ' . escapeshellarg($ps_script) . 
-                   ' -ToEmail ' . escapeshellarg($to_email) . 
-                   ' -ToName ' . escapeshellarg($to_name) . 
-                   ' -Otp ' . escapeshellarg($otp) . 
-                   ' -SmtpUser ' . escapeshellarg($smtp_user) . 
-                   ' -SmtpPass ' . escapeshellarg($smtp_pass) . 
-                   ' -FromName ' . escapeshellarg($from_name) . ' 2>&1';
-            $output = @shell_exec($cmd);
-            if ($output && strpos($output, 'SUCCESS') !== false) {
-                return true;
+    if (!empty($smtp_user) && !empty($smtp_pass)) {
+        // Try Port 465 Direct SSL first (fastest and most reliable in PHP)
+        $clean_pass = str_replace(' ', '', $smtp_pass);
+        $context = stream_context_create([
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true,
+                'peer_name' => 'smtp.gmail.com'
+            ]
+        ]);
+
+        $socket = @stream_socket_client('ssl://smtp.gmail.com:465', $errno, $errstr, 8, STREAM_CLIENT_CONNECT, $context);
+        $use_starttls = false;
+
+        if (!$socket) {
+            $socket = @stream_socket_client('tcp://smtp.gmail.com:587', $errno, $errstr, 8, STREAM_CLIENT_CONNECT, $context);
+            $use_starttls = true;
+        }
+
+        if ($socket) {
+            stream_set_timeout($socket, 10);
+            $read_fn = function() use ($socket) {
+                $data = '';
+                while ($str = fgets($socket, 515)) {
+                    $data .= $str;
+                    if (substr($str, 3, 1) === ' ') break;
+                }
+                return $data;
+            };
+            $write_fn = function($cmd) use ($socket) {
+                fputs($socket, $cmd . "\r\n");
+            };
+
+            $banner = $read_fn();
+            if (substr($banner, 0, 3) === '220') {
+                $write_fn("EHLO localhost");
+                $read_fn();
+
+                if ($use_starttls) {
+                    $write_fn("STARTTLS");
+                    $st_resp = $read_fn();
+                    if (substr($st_resp, 0, 3) === '220') {
+                        @stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLS_CLIENT);
+                        $write_fn("EHLO localhost");
+                        $read_fn();
+                    }
+                }
+
+                $write_fn("AUTH LOGIN");
+                $auth_r = $read_fn();
+                if (substr($auth_r, 0, 3) === '334') {
+                    $write_fn(base64_encode($smtp_user));
+                    $read_fn();
+                    $write_fn(base64_encode($clean_pass));
+                    $auth_res = $read_fn();
+
+                    if (substr($auth_res, 0, 3) === '235') {
+                        $write_fn("MAIL FROM:<" . $smtp_user . ">");
+                        $read_fn();
+                        $write_fn("RCPT TO:<" . $to_email . ">");
+                        $rcpt_res = $read_fn();
+
+                        if (substr($rcpt_res, 0, 3) === '250') {
+                            $write_fn("DATA");
+                            $data_res = $read_fn();
+
+                            if (substr($data_res, 0, 3) === '354') {
+                                $headers = [
+                                    "From: =?UTF-8?B?" . base64_encode($from_name) . "?= <" . $smtp_user . ">",
+                                    "To: =?UTF-8?B?" . base64_encode($to_name) . "?= <" . $to_email . ">",
+                                    "Subject: =?UTF-8?B?" . base64_encode("Your CivicPulse OTP Verification Code: $otp") . "?=",
+                                    "MIME-Version: 1.0",
+                                    "Content-Type: text/html; charset=UTF-8",
+                                    "Content-Transfer-Encoding: base64",
+                                    "X-Priority: 1 (Highest)",
+                                    "X-MSMail-Priority: High",
+                                    "Importance: High",
+                                    "Date: " . date('r'),
+                                    "Message-ID: <" . time() . "." . uniqid() . "@gmail.com>"
+                                ];
+                                $raw_msg = implode("\r\n", $headers) . "\r\n\r\n" . chunk_split(base64_encode($html_body));
+                                $write_fn($raw_msg . "\r\n.");
+                                $sent_res = $read_fn();
+                                $write_fn("QUIT");
+                                fclose($socket);
+
+                                if (substr($sent_res, 0, 3) === '250') {
+                                    return true;
+                                }
+                            }
+                        }
+                    } else {
+                        $error_detail = "Gmail App Password authentication failed: " . $auth_res;
+                        error_log($error_detail);
+                    }
+                }
             }
-            $error_detail = "Windows SMTP Bridge: " . trim($output ?: 'Execution failed');
-            error_log($error_detail);
+            if (is_resource($socket)) fclose($socket);
+        }
+
+        // PRIORITY 1B: Windows Native .NET PowerShell Bridge (Fallback on Windows)
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            $ps_script = __DIR__ . DIRECTORY_SEPARATOR . 'send_smtp.ps1';
+            if (file_exists($ps_script)) {
+                $cmd = 'powershell.exe -ExecutionPolicy Bypass -NoProfile -File ' . escapeshellarg($ps_script) . 
+                       ' -ToEmail ' . escapeshellarg($to_email) . 
+                       ' -ToName ' . escapeshellarg($to_name) . 
+                       ' -Otp ' . escapeshellarg($otp) . 
+                       ' -SmtpUser ' . escapeshellarg($smtp_user) . 
+                       ' -SmtpPass ' . escapeshellarg($smtp_pass) . 
+                       ' -FromName ' . escapeshellarg($from_name) . ' 2>&1';
+                $output = @shell_exec($cmd);
+                if ($output && strpos($output, 'SUCCESS') !== false) {
+                    return true;
+                }
+            }
         }
     }
 
