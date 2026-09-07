@@ -1,11 +1,12 @@
 <?php
 /**
- * CivicPulse — Bulletproof Multi-Transport Mail Helper
+ * CivicPulse — Ultra-Fast Multi-Transport Mail Helper
  * Supports:
- *  1. Gmail App Password / Custom SMTP via PHPMailer (Sends to ANY email address)
- *  2. Brevo API (HTTPS Port 443 — Free 300 emails/day to any recipient)
- *  3. Resend API (HTTPS Port 443)
+ *  1. Brevo HTTP API (HTTPS Port 443 — Free 300 emails/day to ANY recipient, no domain lock)
+ *  2. Gmail / Custom SMTP via PHPMailer (with 1.5s fast connectivity check to prevent hangs)
+ *  3. Resend HTTP API (HTTPS Port 443)
  *  4. Windows Native PowerShell SmtpClient Bridge
+ *  5. Instant Dev-Mode Fallback (Zero delay)
  */
 
 use PHPMailer\PHPMailer\PHPMailer;
@@ -53,66 +54,7 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
     $smtp_host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
 
     // -------------------------------------------------------------
-    // PRIORITY 1: Gmail App Password / Custom SMTP via PHPMailer (Sends to ANY email address)
-    // -------------------------------------------------------------
-    if (!empty($smtp_user) && !empty($smtp_pass)) {
-        if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-            $phpmailer_dir = dirname(__DIR__) . '/userside/PHPMailer/src/';
-            if (file_exists($phpmailer_dir . 'PHPMailer.php')) {
-                require_once $phpmailer_dir . 'Exception.php';
-                require_once $phpmailer_dir . 'PHPMailer.php';
-                require_once $phpmailer_dir . 'SMTP.php';
-            }
-        }
-
-        if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-            $configs = [
-                ['host' => $smtp_host, 'port' => 587, 'secure' => 'tls'],
-                ['host' => $smtp_host, 'port' => 465, 'secure' => 'ssl'],
-            ];
-
-            foreach ($configs as $cfg) {
-                try {
-                    $mail = new PHPMailer(true);
-                    $mail->isSMTP();
-                    $mail->Host       = $cfg['host'];
-                    $mail->SMTPAuth   = true;
-                    $mail->Username   = $smtp_user;
-                    $mail->Password   = $smtp_pass;
-                    $mail->SMTPSecure = $cfg['secure'];
-                    $mail->Port       = $cfg['port'];
-                    $mail->Timeout    = 5;
-                    $mail->CharSet    = 'UTF-8';
-
-                    $mail->SMTPOptions = [
-                        'ssl' => [
-                            'verify_peer' => false,
-                            'verify_peer_name' => false,
-                            'allow_self_signed' => true,
-                            'peer_name' => $smtp_host
-                        ]
-                    ];
-
-                    $mail->setFrom($smtp_user, $from_name);
-                    $mail->addAddress($to_email, $to_name);
-
-                    $mail->isHTML(true);
-                    $mail->Subject = 'Your CivicPulse OTP Verification Code: ' . $otp;
-                    $mail->Body    = $html_body;
-                    $mail->AltBody = "Your CivicPulse OTP verification code is: $otp";
-
-                    $mail->send();
-                    return true;
-                } catch (Exception $e) {
-                    $error_detail = $mail->ErrorInfo ?: $e->getMessage();
-                    error_log("PHPMailer failed on {$cfg['host']}:{$cfg['port']} ({$cfg['secure']}): " . $error_detail);
-                }
-            }
-        }
-    }
-
-    // -------------------------------------------------------------
-    // PRIORITY 2: Brevo HTTP API (HTTPS Port 443 — Free 300 emails/day to any recipient)
+    // PRIORITY 1: Brevo HTTP API (HTTPS Port 443 — Instant, Sends to ANY recipient)
     // -------------------------------------------------------------
     $brevo_key = trim(getenv('BREVO_API_KEY') ?: '');
     if (!empty($brevo_key)) {
@@ -132,7 +74,7 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
                     'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
                     'htmlContent' => $html_body
                 ]),
-                CURLOPT_TIMEOUT => 6,
+                CURLOPT_TIMEOUT => 4,
                 CURLOPT_SSL_VERIFYPEER => false
             ]);
             $res = curl_exec($ch);
@@ -142,8 +84,72 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
             if ($code >= 200 && $code < 300) {
                 return true;
             } else {
-                $error_detail = "Brevo API error (HTTP $code): " . $res;
+                $err_json = json_decode($res, true);
+                $error_detail = "Brevo API error (HTTP $code): " . ($err_json['message'] ?? $res);
                 error_log($error_detail);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // PRIORITY 2: Gmail SMTP via PHPMailer with Fast 1.5s Connectivity Probe
+    // (Prevents hanging when Port 587/465 is blocked by ISP or Cloud Host)
+    // -------------------------------------------------------------
+    if (!empty($smtp_user) && !empty($smtp_pass)) {
+        // Fast probe: check if port 587 is actually reachable before launching PHPMailer
+        $can_connect_587 = false;
+        $fp = @fsockopen($smtp_host, 587, $errno, $errstr, 1.5);
+        if ($fp) {
+            $can_connect_587 = true;
+            fclose($fp);
+        }
+
+        if ($can_connect_587) {
+            if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+                $phpmailer_dir = dirname(__DIR__) . '/userside/PHPMailer/src/';
+                if (file_exists($phpmailer_dir . 'PHPMailer.php')) {
+                    require_once $phpmailer_dir . 'Exception.php';
+                    require_once $phpmailer_dir . 'PHPMailer.php';
+                    require_once $phpmailer_dir . 'SMTP.php';
+                }
+            }
+
+            if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+                try {
+                    $mail = new PHPMailer(true);
+                    $mail->isSMTP();
+                    $mail->Host       = $smtp_host;
+                    $mail->SMTPAuth   = true;
+                    $mail->Username   = $smtp_user;
+                    $mail->Password   = $smtp_pass;
+                    $mail->SMTPSecure = 'tls';
+                    $mail->Port       = 587;
+                    $mail->Timeout    = 4;
+                    $mail->CharSet    = 'UTF-8';
+
+                    $mail->SMTPOptions = [
+                        'ssl' => [
+                            'verify_peer' => false,
+                            'verify_peer_name' => false,
+                            'allow_self_signed' => true,
+                            'peer_name' => $smtp_host
+                        ]
+                    ];
+
+                    $mail->setFrom($smtp_user, $from_name);
+                    $mail->addAddress($to_email, $to_name);
+
+                    $mail->isHTML(true);
+                    $mail->Subject = 'Your CivicPulse OTP Verification Code: ' . $otp;
+                    $mail->Body    = $html_body;
+                    $mail->AltBody = "Hi $to_name,\n\nYour CivicPulse OTP verification code is: $otp\n\nValid for 15 minutes.";
+
+                    $mail->send();
+                    return true;
+                } catch (Exception $e) {
+                    $error_detail = $mail->ErrorInfo ?: $e->getMessage();
+                    error_log("PHPMailer error: " . $error_detail);
+                }
             }
         }
     }
@@ -170,7 +176,7 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
                     'Content-Type: application/json'
                 ],
                 CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_TIMEOUT => 6,
+                CURLOPT_TIMEOUT => 4,
                 CURLOPT_SSL_VERIFYPEER => false
             ]);
             $res = curl_exec($ch);
