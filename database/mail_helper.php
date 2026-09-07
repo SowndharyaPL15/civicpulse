@@ -116,7 +116,48 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
     }
 
     // -------------------------------------------------------------
-    // PRIORITY 2: Resend HTTP API (HTTPS Port 443)
+    // PRIORITY 2: SMTP2GO HTTP API (HTTPS Port 443 — Instant activation, sends to ANY recipient)
+    // -------------------------------------------------------------
+    $smtp2go_key = trim(getenv('SMTP2GO_API_KEY') ?: '');
+    if (!empty($smtp2go_key)) {
+        $smtp2go_sender = trim(getenv('SMTP2GO_SENDER') ?: (getenv('SMTP_USER') ?: 'sowndharyapl2006@gmail.com'));
+        $payload = json_encode([
+            'api_key' => $smtp2go_key,
+            'to' => [$to_name ? "$to_name <$to_email>" : $to_email],
+            'sender' => "$from_name <$smtp2go_sender>",
+            'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
+            'html_body' => $html_body
+        ]);
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init('https://api.smtp2go.com/v3/email/send');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_TIMEOUT => 6,
+                CURLOPT_SSL_VERIFYPEER => false
+            ]);
+            $res = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($code >= 200 && $code < 300) {
+                $json = json_decode($res, true);
+                if (isset($json['data']['succeeded']) && $json['data']['succeeded'] > 0) {
+                    return true;
+                }
+            } else {
+                $err_json = json_decode($res, true);
+                $error_detail = "SMTP2GO API error: " . ($err_json['data']['error'] ?? $res);
+                error_log($error_detail);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // PRIORITY 3: Resend HTTP API (HTTPS Port 443)
     // -------------------------------------------------------------
     $resend_key = trim(getenv('RESEND_API_KEY') ?: '');
     if (!empty($resend_key)) {
