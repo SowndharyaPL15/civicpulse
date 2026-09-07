@@ -87,7 +87,7 @@ if(isset($_POST['verify'])){
         <div class="success" style="background-color: #fff3cd; color: #856404; border-left: 5px solid #ffc107; margin-bottom:18px; padding:14px; border-radius:8px; font-size:14px; text-align:left;">
             <div style="font-weight:600; margin-bottom:6px;">⚠️ Dev Mode Fallback Active</div>
             <div style="font-size:13px; color:#664d03; margin-bottom:10px; line-height:1.4;">
-                SMTP host timed out (Port 587/465 is blocked by your ISP/network). Your verification code is:
+                <?= htmlspecialchars($_SESSION['mail_error'] ?? 'SMTP host timed out (Port 587/465 is blocked by cloud provider/ISP). Your verification code is:') ?>
             </div>
             <div style="display:flex; align-items:center; justify-content:space-between; background:#fff; padding:8px 12px; border-radius:6px; border:1px dashed #e0a800;">
                 <span id="devOtpVal" style="font-size:22px; font-weight:700; color:#1e3a8a; letter-spacing:4px;"><?= htmlspecialchars($_SESSION['dev_otp']) ?></span>

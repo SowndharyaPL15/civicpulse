@@ -54,10 +54,18 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
     $smtp_host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
 
     // -------------------------------------------------------------
-    // PRIORITY 1: Brevo HTTP API (HTTPS Port 443 — Never blocked by Render / Cloud)
+    // PRIORITY 1: Brevo HTTP API (HTTPS Port 443 — Guaranteed on Render/Cloud to ANY recipient)
     // -------------------------------------------------------------
     $brevo_key = trim(getenv('BREVO_API_KEY') ?: '');
     if (!empty($brevo_key)) {
+        $sender_email = trim(getenv('BREVO_SENDER_EMAIL') ?: (getenv('SMTP_USER') ?: 'sowndharyapl2006@gmail.com'));
+        $payload = json_encode([
+            'sender' => ['name' => $from_name, 'email' => $sender_email],
+            'to' => [['email' => $to_email, 'name' => $to_name]],
+            'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
+            'htmlContent' => $html_body
+        ]);
+
         if (function_exists('curl_init')) {
             $ch = curl_init('https://api.brevo.com/v3/smtp/email');
             curl_setopt_array($ch, [
@@ -68,13 +76,8 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
                     'Content-Type: application/json',
                     'Accept: application/json'
                 ],
-                CURLOPT_POSTFIELDS => json_encode([
-                    'sender' => ['name' => $from_name, 'email' => $smtp_user ?: 'admin@civicpulse.org'],
-                    'to' => [['email' => $to_email, 'name' => $to_name]],
-                    'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
-                    'htmlContent' => $html_body
-                ]),
-                CURLOPT_TIMEOUT => 5,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_TIMEOUT => 6,
                 CURLOPT_SSL_VERIFYPEER => false
             ]);
             $res = curl_exec($ch);
@@ -87,6 +90,27 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
                 $err_json = json_decode($res, true);
                 $error_detail = "Brevo API error (HTTP $code): " . ($err_json['message'] ?? $res);
                 error_log($error_detail);
+            }
+        } else {
+            $context = stream_context_create([
+                'http' => [
+                    'method' => 'POST',
+                    'header' => "api-key: {$brevo_key}\r\nContent-Type: application/json\r\nAccept: application/json\r\n",
+                    'content' => $payload,
+                    'timeout' => 6,
+                    'ignore_errors' => true
+                ],
+                'ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false
+                ]
+            ]);
+            $res = @file_get_contents('https://api.brevo.com/v3/smtp/email', false, $context);
+            if ($res !== false) {
+                $json = json_decode($res, true);
+                if (isset($json['messageId'])) {
+                    return true;
+                }
             }
         }
     }
