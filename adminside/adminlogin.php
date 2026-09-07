@@ -2,12 +2,10 @@
 session_start();
 include "config.php";
 
-require 'PHPMailer/src/PHPMailer.php';
-require 'PHPMailer/src/SMTP.php';
-require 'PHPMailer/src/Exception.php';
-
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
+require_once 'PHPMailer/src/PHPMailer.php';
+require_once 'PHPMailer/src/SMTP.php';
+require_once 'PHPMailer/src/Exception.php';
+require_once __DIR__ . '/../database/mail_helper.php';
 
 date_default_timezone_set('Asia/Kolkata');
 
@@ -33,42 +31,9 @@ $stmt2=$conn->prepare("UPDATE admin SET otp=?, otp_expiry=? WHERE admin_id=?");
 $stmt2->bind_param("ssi",$otp,$expiry,$admin['admin_id']);
 $stmt2->execute();
 
-$smtp_user = trim(getenv('SMTP_USER') ?: '');
-$smtp_pass = str_replace(' ', '', getenv('SMTP_PASS') ?: '');
-$sent = false;
-
-if(!empty($smtp_user) && !empty($smtp_pass)){
-    $mail = new PHPMailer(true);
-    try{
-        $mail->isSMTP();
-        $mail->Host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
-        $mail->SMTPAuth = true;
-        $mail->Username = $smtp_user;
-        $mail->Password = $smtp_pass;
-        $mail->SMTPSecure = getenv('SMTP_SECURE') ?: 'tls';
-        $mail->Port = (int)(getenv('SMTP_PORT') ?: 587);
-        $mail->SMTPOptions = [
-            'ssl' => [
-                'verify_peer' => false,
-                'verify_peer_name' => false,
-                'allow_self_signed' => true
-            ]
-        ];
-
-        $smtp_from_name = getenv('SMTP_FROM_NAME') ?: 'CivicPulse Admin';
-        $mail->setFrom($smtp_user, $smtp_from_name);
-        $mail->addAddress($admin['email']);
-
-        $mail->isHTML(true);
-        $mail->Subject='Admin OTP Verification — CivicPulse';
-        $mail->Body="Your OTP is: <b>$otp</b>. It expires in 30 minutes.";
-
-        $mail->send();
-        $sent = true;
-    }catch(Exception $e){
-        error_log("Admin PHPMailer error: " . $e->getMessage());
-    }
-}
+$admin_name = $admin['name'] ?? 'Admin';
+$mail_err = null;
+$sent = civicpulse_send_otp_email($admin['email'], $admin_name, (string)$otp, $mail_err);
 
 $_SESSION['otp_admin_id']=$admin['admin_id'];
 if(!$sent){

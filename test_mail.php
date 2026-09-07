@@ -9,7 +9,7 @@ ini_set('display_errors', 1);
 require_once __DIR__ . '/database/db_connect.php';
 require_once __DIR__ . '/database/mail_helper.php';
 
-$test_email = $_GET['email'] ?? 'dhanasrikumarpl@gmail.com';
+$test_email = $_GET['email'] ?? '';
 $test_otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
 $error = null;
 $result = null;
