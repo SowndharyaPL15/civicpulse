@@ -1,12 +1,7 @@
 <?php
 /**
- * CivicPulse — Ultra-Fast Multi-Transport Mail Helper
- * Supports:
- *  1. Brevo HTTP API (HTTPS Port 443 — Free 300 emails/day to ANY recipient, no domain lock)
- *  2. Gmail / Custom SMTP via PHPMailer (with 1.5s fast connectivity check to prevent hangs)
- *  3. Resend HTTP API (HTTPS Port 443)
- *  4. Windows Native PowerShell SmtpClient Bridge
- *  5. Instant Dev-Mode Fallback (Zero delay)
+ * CivicPulse — Direct High-Performance Mail Dispatcher
+ * Sends OTPs directly to EVERY registered email address via Gmail SMTP
  */
 
 use PHPMailer\PHPMailer\PHPMailer;
@@ -54,67 +49,25 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
     $smtp_host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
 
     // -------------------------------------------------------------
-    // PRIORITY 1: Brevo HTTP API (HTTPS Port 443 — Instant, Sends to ANY recipient)
-    // -------------------------------------------------------------
-    $brevo_key = trim(getenv('BREVO_API_KEY') ?: '');
-    if (!empty($brevo_key)) {
-        if (function_exists('curl_init')) {
-            $ch = curl_init('https://api.brevo.com/v3/smtp/email');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST => true,
-                CURLOPT_HTTPHEADER => [
-                    'api-key: ' . $brevo_key,
-                    'Content-Type: application/json',
-                    'Accept: application/json'
-                ],
-                CURLOPT_POSTFIELDS => json_encode([
-                    'sender' => ['name' => $from_name, 'email' => $smtp_user ?: 'admin@civicpulse.org'],
-                    'to' => [['email' => $to_email, 'name' => $to_name]],
-                    'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
-                    'htmlContent' => $html_body
-                ]),
-                CURLOPT_TIMEOUT => 4,
-                CURLOPT_SSL_VERIFYPEER => false
-            ]);
-            $res = curl_exec($ch);
-            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($code >= 200 && $code < 300) {
-                return true;
-            } else {
-                $err_json = json_decode($res, true);
-                $error_detail = "Brevo API error (HTTP $code): " . ($err_json['message'] ?? $res);
-                error_log($error_detail);
-            }
-        }
-    }
-
-    // -------------------------------------------------------------
-    // PRIORITY 2: Gmail SMTP via PHPMailer with Fast 1.5s Connectivity Probe
-    // (Prevents hanging when Port 587/465 is blocked by ISP or Cloud Host)
+    // PRIORITY 1: Direct Gmail SMTP via PHPMailer (Port 587 TLS & Port 465 SSL)
     // -------------------------------------------------------------
     if (!empty($smtp_user) && !empty($smtp_pass)) {
-        // Fast probe: check if port 587 is actually reachable before launching PHPMailer
-        $can_connect_587 = false;
-        $fp = @fsockopen($smtp_host, 587, $errno, $errstr, 1.5);
-        if ($fp) {
-            $can_connect_587 = true;
-            fclose($fp);
+        if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+            $phpmailer_dir = dirname(__DIR__) . '/userside/PHPMailer/src/';
+            if (file_exists($phpmailer_dir . 'PHPMailer.php')) {
+                require_once $phpmailer_dir . 'Exception.php';
+                require_once $phpmailer_dir . 'PHPMailer.php';
+                require_once $phpmailer_dir . 'SMTP.php';
+            }
         }
 
-        if ($can_connect_587) {
-            if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-                $phpmailer_dir = dirname(__DIR__) . '/userside/PHPMailer/src/';
-                if (file_exists($phpmailer_dir . 'PHPMailer.php')) {
-                    require_once $phpmailer_dir . 'Exception.php';
-                    require_once $phpmailer_dir . 'PHPMailer.php';
-                    require_once $phpmailer_dir . 'SMTP.php';
-                }
-            }
+        if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+            $attempts = [
+                ['port' => 587, 'secure' => 'tls'],
+                ['port' => 465, 'secure' => 'ssl'],
+            ];
 
-            if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+            foreach ($attempts as $att) {
                 try {
                     $mail = new PHPMailer(true);
                     $mail->isSMTP();
@@ -122,9 +75,9 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
                     $mail->SMTPAuth   = true;
                     $mail->Username   = $smtp_user;
                     $mail->Password   = $smtp_pass;
-                    $mail->SMTPSecure = 'tls';
-                    $mail->Port       = 587;
-                    $mail->Timeout    = 4;
+                    $mail->SMTPSecure = $att['secure'];
+                    $mail->Port       = $att['port'];
+                    $mail->Timeout    = 6;
                     $mail->CharSet    = 'UTF-8';
 
                     $mail->SMTPOptions = [
@@ -148,55 +101,14 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
                     return true;
                 } catch (Exception $e) {
                     $error_detail = $mail->ErrorInfo ?: $e->getMessage();
-                    error_log("PHPMailer error: " . $error_detail);
+                    error_log("PHPMailer attempt on port {$att['port']} ({$att['secure']}) failed: " . $error_detail);
                 }
             }
         }
     }
 
     // -------------------------------------------------------------
-    // PRIORITY 3: Resend HTTP API (HTTPS Port 443)
-    // -------------------------------------------------------------
-    $resend_key = trim(getenv('RESEND_API_KEY') ?: '');
-    if (!empty($resend_key)) {
-        $payload = json_encode([
-            'from' => getenv('MAIL_FROM') ?: 'CivicPulse <onboarding@resend.dev>',
-            'to' => [$to_email],
-            'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
-            'html' => $html_body
-        ]);
-
-        if (function_exists('curl_init')) {
-            $ch = curl_init('https://api.resend.com/emails');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST => true,
-                CURLOPT_HTTPHEADER => [
-                    'Authorization: Bearer ' . $resend_key,
-                    'Content-Type: application/json'
-                ],
-                CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_TIMEOUT => 4,
-                CURLOPT_SSL_VERIFYPEER => false
-            ]);
-            $res = curl_exec($ch);
-            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curl_err = curl_error($ch);
-            curl_close($ch);
-
-            if ($code >= 200 && $code < 300) {
-                return true;
-            } else {
-                $err_json = json_decode($res, true);
-                $msg = $err_json['message'] ?? ($res ?: $curl_err);
-                $error_detail = "Resend API error (HTTP $code): " . $msg;
-                error_log($error_detail);
-            }
-        }
-    }
-
-    // -------------------------------------------------------------
-    // PRIORITY 4: Windows Native .NET PowerShell Bridge (Fallback on Windows)
+    // PRIORITY 2: Windows Native .NET PowerShell Bridge (Fallback on Windows)
     // -------------------------------------------------------------
     if (!empty($smtp_user) && !empty($smtp_pass) && strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
         $ps_script = __DIR__ . DIRECTORY_SEPARATOR . 'send_smtp.ps1';
