@@ -21,7 +21,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $user = $result->fetch_assoc();
 
             if ($user['status'] !== 'active') {
-                $error = "Account not active. Please verify OTP.";
+                $_SESSION['email'] = $user['email'];
+                $error = 'Account not active. <a href="verify_otp.php" style="color:#2563eb; font-weight:bold; text-decoration:underline;">Click here to enter OTP</a> or <a href="resend_otp.php" style="color:#2563eb; font-weight:bold; text-decoration:underline;">Resend OTP</a>.';
             } elseif (password_verify($password, $user['password'])) {
                 // Correct session variable
                 $_SESSION['user_id'] = $user['uid'];
@@ -56,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="form-box">
         <h2>Citizen Login</h2>
 
-        <?php if (!empty($error)) echo '<p style="color:#dc2626; background:#fee2e2; padding:10px; border-radius:6px; margin-bottom:15px;">'.htmlspecialchars($error).'</p>'; ?>
+        <?php if (!empty($error)) echo '<p style="color:#dc2626; background:#fee2e2; padding:10px; border-radius:6px; margin-bottom:15px; font-size:14px; line-height:1.4;">'.$error.'</p>'; ?>
         <?php if (isset($_SESSION['login_success'])): ?>
             <p style="color:#15803d; background:#dcfce7; border-left:4px solid #22c55e; padding:10px; border-radius:6px; margin-bottom:15px; font-size:14px;">
                 <?= htmlspecialchars($_SESSION['login_success']) ?>
