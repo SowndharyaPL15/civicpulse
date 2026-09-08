@@ -54,11 +54,53 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
     $smtp_host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
 
     // -------------------------------------------------------------
-    // PRIORITY 1: Brevo HTTP API (HTTPS Port 443 — Guaranteed on Render/Cloud to ANY recipient)
+    // PRIORITY 1: SMTP2GO HTTP API (HTTPS Port 443 — Instant, Sends to ANY recipient)
+    // -------------------------------------------------------------
+    $smtp2go_key = trim(getenv('SMTP2GO_API_KEY') ?: '');
+    if (!empty($smtp2go_key)) {
+        $smtp2go_sender = trim(getenv('SMTP2GO_SENDER') ?: (getenv('SMTP_USER') ?: '23cs108@drngpit.ac.in'));
+        $payload = json_encode([
+            'api_key' => $smtp2go_key,
+            'to' => [$to_name ? "$to_name <$to_email>" : $to_email],
+            'sender' => "$from_name <$smtp2go_sender>",
+            'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
+            'html_body' => $html_body
+        ]);
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init('https://api.smtp2go.com/v3/email/send');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_TIMEOUT => 6,
+                CURLOPT_SSL_VERIFYPEER => false
+            ]);
+            $res = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($code >= 200 && $code < 300) {
+                $json = json_decode($res, true);
+                if (isset($json['data']['succeeded']) && $json['data']['succeeded'] > 0) {
+                    $error_detail = null;
+                    return true;
+                }
+            } else {
+                $err_json = json_decode($res, true);
+                $error_detail = "SMTP2GO API error: " . ($err_json['data']['error'] ?? $res);
+                error_log($error_detail);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // PRIORITY 2: Brevo HTTP API (HTTPS Port 443 — Active once account is enabled)
     // -------------------------------------------------------------
     $brevo_key = trim(getenv('BREVO_API_KEY') ?: '');
     if (!empty($brevo_key)) {
-        $sender_email = trim(getenv('BREVO_SENDER_EMAIL') ?: (getenv('SMTP_USER') ?: 'sowndharyapl2006@gmail.com'));
+        $sender_email = trim(getenv('BREVO_SENDER_EMAIL') ?: (getenv('SMTP_USER') ?: '146aqc@gmail.com'));
         $payload = json_encode([
             'sender' => ['name' => $from_name, 'email' => $sender_email],
             'to' => [['email' => $to_email, 'name' => $to_name]],
@@ -85,72 +127,11 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
             curl_close($ch);
 
             if ($code >= 200 && $code < 300) {
+                $error_detail = null;
                 return true;
             } else {
                 $err_json = json_decode($res, true);
                 $error_detail = "Brevo API error (HTTP $code): " . ($err_json['message'] ?? $res);
-                error_log($error_detail);
-            }
-        } else {
-            $context = stream_context_create([
-                'http' => [
-                    'method' => 'POST',
-                    'header' => "api-key: {$brevo_key}\r\nContent-Type: application/json\r\nAccept: application/json\r\n",
-                    'content' => $payload,
-                    'timeout' => 6,
-                    'ignore_errors' => true
-                ],
-                'ssl' => [
-                    'verify_peer' => false,
-                    'verify_peer_name' => false
-                ]
-            ]);
-            $res = @file_get_contents('https://api.brevo.com/v3/smtp/email', false, $context);
-            if ($res !== false) {
-                $json = json_decode($res, true);
-                if (isset($json['messageId'])) {
-                    return true;
-                }
-            }
-        }
-    }
-
-    // -------------------------------------------------------------
-    // PRIORITY 2: SMTP2GO HTTP API (HTTPS Port 443 — Instant activation, sends to ANY recipient)
-    // -------------------------------------------------------------
-    $smtp2go_key = trim(getenv('SMTP2GO_API_KEY') ?: '');
-    if (!empty($smtp2go_key)) {
-        $smtp2go_sender = trim(getenv('SMTP2GO_SENDER') ?: (getenv('SMTP_USER') ?: 'sowndharyapl2006@gmail.com'));
-        $payload = json_encode([
-            'api_key' => $smtp2go_key,
-            'to' => [$to_name ? "$to_name <$to_email>" : $to_email],
-            'sender' => "$from_name <$smtp2go_sender>",
-            'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
-            'html_body' => $html_body
-        ]);
-
-        if (function_exists('curl_init')) {
-            $ch = curl_init('https://api.smtp2go.com/v3/email/send');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST => true,
-                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-                CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_TIMEOUT => 6,
-                CURLOPT_SSL_VERIFYPEER => false
-            ]);
-            $res = curl_exec($ch);
-            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($code >= 200 && $code < 300) {
-                $json = json_decode($res, true);
-                if (isset($json['data']['succeeded']) && $json['data']['succeeded'] > 0) {
-                    return true;
-                }
-            } else {
-                $err_json = json_decode($res, true);
-                $error_detail = "SMTP2GO API error: " . ($err_json['data']['error'] ?? $res);
                 error_log($error_detail);
             }
         }
