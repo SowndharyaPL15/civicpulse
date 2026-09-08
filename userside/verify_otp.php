@@ -26,7 +26,6 @@ if(isset($_POST['verify'])){
             // Already active - log in and redirect
             $_SESSION['user_id'] = $row['uid'];
             $_SESSION['user_name'] = $row['name'];
-            unset($_SESSION['dev_otp']);
             header("Location: home.php");
             exit;
         } elseif(!empty($entered_otp) && trim((string)$row['otp']) === $entered_otp){
@@ -36,7 +35,6 @@ if(isset($_POST['verify'])){
             $stmt2->execute();
 
             // Set session & redirect straight to dashboard
-            unset($_SESSION['dev_otp']);
             $_SESSION['user_id'] = $row['uid'];
             $_SESSION['user_name'] = $row['name'];
             header("Location: home.php");
@@ -83,28 +81,7 @@ if(isset($_POST['verify'])){
         <?php unset($_SESSION['resend_success']); ?>
         <?php endif; ?>
 
-        <?php if(isset($_SESSION['dev_otp'])): ?>
-        <div class="success" style="background-color: #fff3cd; color: #856404; border-left: 5px solid #ffc107; margin-bottom:18px; padding:14px; border-radius:8px; font-size:14px; text-align:left;">
-            <div style="font-weight:600; margin-bottom:6px;">⚠️ Dev Mode Fallback Active</div>
-            <div style="font-size:13px; color:#664d03; margin-bottom:10px; line-height:1.4;">
-                <?= htmlspecialchars($_SESSION['mail_error'] ?? 'SMTP host timed out (Port 587/465 is blocked by cloud provider/ISP). Your verification code is:') ?>
-            </div>
-            <div style="display:flex; align-items:center; justify-content:space-between; background:#fff; padding:8px 12px; border-radius:6px; border:1px dashed #e0a800;">
-                <span id="devOtpVal" style="font-size:22px; font-weight:700; color:#1e3a8a; letter-spacing:4px;"><?= htmlspecialchars($_SESSION['dev_otp']) ?></span>
-                <button type="button" onclick="autoFillOtp()" style="width:auto; padding:6px 12px; font-size:12px; margin:0; background:#2563eb; color:white; border-radius:6px; border:none; cursor:pointer;">⚡ Auto-Fill Code</button>
-            </div>
-        </div>
-        <script>
-        function autoFillOtp() {
-            var otp = document.getElementById('devOtpVal').innerText.trim();
-            var input = document.querySelector('input[name="otp"]');
-            if (input) {
-                input.value = otp;
-                input.focus();
-            }
-        }
-        </script>
-        <?php endif; ?>
+
 
         <form method="POST">
             <input type="text" name="otp" class="otp-input" placeholder="------" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autofocus autocomplete="one-time-code">

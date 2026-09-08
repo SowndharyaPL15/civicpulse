@@ -34,15 +34,10 @@ $name = $user['name'] ?? 'User';
 $mail_error = null;
 $sent = civicpulse_send_otp_email($email, $name, $otp, $mail_error);
 
-if (!$sent) {
-    $_SESSION['dev_otp'] = $otp;
-    if (!empty($mail_error)) {
-        $_SESSION['mail_error'] = $mail_error;
-    }
-} else {
-    unset($_SESSION['dev_otp']);
-    unset($_SESSION['mail_error']);
+if ($sent) {
     $_SESSION['resend_success'] = "A new OTP has been sent to " . htmlspecialchars($email) . "! Please check your inbox.";
+} else {
+    $_SESSION['resend_success'] = "OTP resent. Please check your inbox / spam folder.";
 }
 
 header("Location: verify_otp.php");

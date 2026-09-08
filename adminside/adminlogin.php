@@ -33,14 +33,9 @@ $stmt2->execute();
 
 $admin_name = $admin['name'] ?? 'Admin';
 $mail_err = null;
-$sent = civicpulse_send_otp_email($admin['email'], $admin_name, (string)$otp, $mail_err);
+civicpulse_send_otp_email($admin['email'], $admin_name, (string)$otp, $mail_err);
 
 $_SESSION['otp_admin_id']=$admin['admin_id'];
-if(!$sent){
-    $_SESSION['admin_dev_otp'] = $otp;
-} else {
-    unset($_SESSION['admin_dev_otp']);
-}
 header("Location: admin_otp.php");
 exit;
 

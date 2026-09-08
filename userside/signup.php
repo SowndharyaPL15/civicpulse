@@ -50,18 +50,9 @@ if(isset($_POST['register'])){
 
         if(!isset($error)){
             $mail_error = null;
-            $sent = civicpulse_send_otp_email($email, $name, $otp, $mail_error);
+            civicpulse_send_otp_email($email, $name, $otp, $mail_error);
 
             $_SESSION['email'] = $email;
-            if (!$sent) {
-                $_SESSION['dev_otp'] = $otp;
-                if (!empty($mail_error)) {
-                    $_SESSION['mail_error'] = $mail_error;
-                }
-            } else {
-                unset($_SESSION['dev_otp']);
-                unset($_SESSION['mail_error']);
-            }
             header("Location: verify_otp.php");
             exit;
         }
