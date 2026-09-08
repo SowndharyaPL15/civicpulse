@@ -80,6 +80,13 @@ if(isset($_POST['verify'])){
         <?php unset($_SESSION['resend_success']); ?>
         <?php endif; ?>
 
+        <?php if(isset($_SESSION['mail_error'])): ?>
+        <div class="error" style="margin-bottom:15px; color:#b45309; background:#fef3c7; border-left:4px solid #f59e0b; padding:10px; border-radius:6px; font-size:13px;">
+            ⚠️ <?= htmlspecialchars($_SESSION['mail_error']) ?>
+        </div>
+        <?php unset($_SESSION['mail_error']); ?>
+        <?php endif; ?>
+
 
 
         <form method="POST">
