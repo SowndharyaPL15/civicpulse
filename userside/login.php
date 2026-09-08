@@ -56,7 +56,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="form-box">
         <h2>Citizen Login</h2>
 
-        <?php if (!empty($error)) echo '<p style="color:red;">'.$error.'</p>'; ?>
+        <?php if (!empty($error)) echo '<p style="color:#dc2626; background:#fee2e2; padding:10px; border-radius:6px; margin-bottom:15px;">'.htmlspecialchars($error).'</p>'; ?>
+        <?php if (isset($_SESSION['login_success'])): ?>
+            <p style="color:#15803d; background:#dcfce7; border-left:4px solid #22c55e; padding:10px; border-radius:6px; margin-bottom:15px; font-size:14px;">
+                <?= htmlspecialchars($_SESSION['login_success']) ?>
+            </p>
+            <?php unset($_SESSION['login_success']); ?>
+        <?php endif; ?>
 
         <form method="post" action="">
             <input type="email" name="email" placeholder="Email" required>

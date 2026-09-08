@@ -23,10 +23,9 @@ if(isset($_POST['verify'])){
         $row = $res->fetch_assoc();
 
         if($row['status'] === 'active'){
-            // Already active - log in and redirect
-            $_SESSION['user_id'] = $row['uid'];
-            $_SESSION['user_name'] = $row['name'];
-            header("Location: home.php");
+            // Already active - redirect to login
+            $_SESSION['login_success'] = "Your account is already active. Please login.";
+            header("Location: login.php");
             exit;
         } elseif(!empty($entered_otp) && trim((string)$row['otp']) === $entered_otp){
             // Activate account
@@ -34,10 +33,10 @@ if(isset($_POST['verify'])){
             $stmt2->bind_param("i", $row['uid']);
             $stmt2->execute();
 
-            // Set session & redirect straight to dashboard
-            $_SESSION['user_id'] = $row['uid'];
-            $_SESSION['user_name'] = $row['name'];
-            header("Location: home.php");
+            // Set success message and redirect to login
+            unset($_SESSION['email']);
+            $_SESSION['login_success'] = "Account verified successfully! Please log in.";
+            header("Location: login.php");
             exit;
         } else {
             $error = "Invalid OTP! Please check the code or click Resend OTP.";
