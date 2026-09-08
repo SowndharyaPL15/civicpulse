@@ -54,7 +54,43 @@ function civicpulse_send_otp_email($to_email, $to_name, $otp, &$error_detail = n
     $smtp_host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
 
     // -------------------------------------------------------------
-    // PRIORITY 1: SMTP2GO HTTP API (HTTPS Port 443 — Instant, Sends to ANY recipient)
+    // PRIORITY 1: Google Apps Script Webhook Relay (HTTPS Port 443 — Guaranteed Primary Inbox delivery from real Gmail)
+    // -------------------------------------------------------------
+    $relay_url = trim(getenv('GMAIL_RELAY_URL') ?: '');
+    if (!empty($relay_url)) {
+        $payload = json_encode([
+            'to' => $to_email,
+            'subject' => 'Your CivicPulse OTP Verification Code: ' . $otp,
+            'html' => $html_body
+        ]);
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init($relay_url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => false
+            ]);
+            $res = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($code >= 200 && $code < 400) {
+                $json = json_decode($res, true);
+                if (isset($json['status']) && $json['status'] === 'success') {
+                    $error_detail = null;
+                    return true;
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // PRIORITY 2: SMTP2GO HTTP API (HTTPS Port 443 — Requires verified sender in SMTP2GO)
     // -------------------------------------------------------------
     $smtp2go_key = trim(getenv('SMTP2GO_API_KEY') ?: '');
     if (!empty($smtp2go_key)) {
